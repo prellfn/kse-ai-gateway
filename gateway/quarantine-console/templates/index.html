@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KSE 隔离区复核台</title>
+<style>
+    :root { --red:#c62828; --green:#2e7d32; --blue:#1976d2; --orange:#ef6c00; --grey:#888; }
+    * { box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", -apple-system, "Segoe UI", sans-serif; margin: 0; background: #f4f6f8; color: #222; }
+    header { background: #006d5b; color: #fff; padding: 16px 24px; display: flex; align-items: center; gap: 14px; }
+    header h1 { margin: 0; font-size: 19px; font-weight: 600; }
+    header .badge { font-size: 11px; background: rgba(255,255,255,.2); padding: 3px 9px; border-radius: 10px; }
+    .wrap { max-width: 1280px; margin: 20px auto; padding: 0 20px; }
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .card { background: #fff; border-radius: 10px; padding: 18px 20px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .card .label { font-size: 12px; color: var(--grey); }
+    .card .value { font-size: 26px; font-weight: 600; margin-top: 6px; }
+    .card.danger .value { color: var(--red); }
+    .card.warn .value { color: var(--orange); }
+    .panel { background: #fff; border-radius: 10px; box-shadow: 0 1px 4px rgba(0,0,0,.08); margin-bottom: 20px; overflow: hidden; }
+    .panel h2 { margin: 0; padding: 14px 18px; font-size: 15px; border-bottom: 1px solid #eceff1; }
+    .tabs { display: flex; gap: 2px; }
+    .tabs button { border: none; background: #eceff1; padding: 10px 18px; cursor: pointer; font-size: 13px; }
+    .tabs button.active { background: #fff; font-weight: 600; color: var(--blue); border-bottom: 2px solid var(--blue); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid #f0f2f4; vertical-align: middle; }
+    th { background: #fafbfc; font-weight: 600; color: #555; font-size: 12px; }
+    tr:hover td { background: #f8fafc; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .tag.red { background: #ffebee; color: var(--red); }
+    .tag.orange { background: #fff3e0; color: var(--orange); }
+    .tag.green { background: #e8f5e9; color: var(--green); }
+    .tag.grey { background: #eceff1; color: #666; }
+    .tag.blue { background: #e3f2fd; color: var(--blue); }
+    code, .mono { font-family: Consolas, Monaco, monospace; font-size: 12px; }
+    .btn { border: none; padding: 5px 11px; border-radius: 5px; cursor: pointer; font-size: 12px; margin-right: 4px; }
+    .btn-blue { background: var(--blue); color: #fff; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-red { background: var(--red); color: #fff; }
+    .btn-grey { background: #eceff1; color: #555; }
+    .btn:hover { opacity: .85; }
+    .toolbar { padding: 12px 18px; display: flex; gap: 10px; align-items: center; border-bottom: 1px solid #eceff1; }
+    input[type=text], select { padding: 7px 10px; border: 1px solid #dfe3e6; border-radius: 5px; font-size: 13px; }
+    .empty { padding: 40px; text-align: center; color: var(--grey); font-size: 13px; }
+    .toast { position: fixed; top: 20px; right: 20px; background: #333; color: #fff; padding: 12px 18px; border-radius: 6px; font-size: 13px; display: none; z-index: 99; max-width: 460px; }
+    .toast.err { background: var(--red); }
+    .toast.ok { background: var(--green); }
+    .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: none; align-items: center; justify-content: center; z-index: 100; }
+    .modal { background: #fff; border-radius: 10px; padding: 22px; width: 560px; max-width: 92vw; }
+    .modal h3 { margin: 0 0 14px; }
+    .modal pre { background: #f7f9fa; padding: 12px; border-radius: 6px; overflow: auto; max-height: 320px; font-size: 12px; }
+    .modal-actions { text-align: right; margin-top: 16px; }
+    .sec { font-size: 12px; color: var(--grey); margin: 0 0 4px; }
+</style>
+</head>
+<body>
+<header>
+    <h1>KSE 隔离区复核台</h1>
+    <span class="badge">Powered by Kaspersky Scan Engine</span>
+</header>
+
+<div class="wrap">
+    <div class="cards" id="cards">
+        <div class="card"><div class="label">隔离文件总数</div><div class="value" id="s-total">-</div></div>
+        <div class="card danger"><div class="label">待复核</div><div class="value" id="s-pending">-</div></div>
+        <div class="card warn"><div class="label">已确认威胁</div><div class="value" id="s-confirmed">-</div></div>
+        <div class="card"><div class="label">误报</div><div class="value" id="s-fp">-</div></div>
+        <div class="card"><div class="label">占用空间</div><div class="value" id="s-size">-</div></div>
+    </div>
+
+    <div class="panel">
+        <div class="tabs">
+            <button class="active" data-tab="quarantine" onclick="switchTab('quarantine')">隔离文件</button>
+            <button data-tab="audit" onclick="switchTab('audit')">审计流水</button>
+            <button data-tab="threats" onclick="switchTab('threats')">威胁统计</button>
+        </div>
+
+        <div id="tab-quarantine">
+            <div class="toolbar">
+                <input type="text" id="q" placeholder="搜索文件名 / 威胁名称 / SHA256" oninput="loadItems()">
+                <select id="status-filter" onchange="loadItems()">
+                    <option value="">全部状态</option>
+                    <option value="pending_review">待复核</option>
+                    <option value="confirmed_threat">已确认威胁</option>
+                    <option value="false_positive">误报</option>
+                </select>
+                <button class="btn btn-blue" onclick="loadItems()">刷新</button>
+            </div>
+            <div id="items-table"></div>
+        </div>
+
+        <div id="tab-audit" style="display:none">
+            <div class="toolbar">
+                <button class="btn btn-blue" onclick="loadAudit()">刷新</button>
+                <span style="font-size:12px;color:#888">网关审计日志尾部（JSON Lines）</span>
+            </div>
+            <div id="audit-table"></div>
+        </div>
+
+        <div id="tab-threats" style="display:none">
+            <div id="threats-body" style="padding:18px"></div>
+        </div>
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-bg" id="modal-bg" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <h3 id="modal-title">详情</h3>
+        <pre id="modal-body"></pre>
+        <div class="modal-actions">
+            <button class="btn btn-grey" onclick="closeModal()">关闭</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+
+function toast(msg, kind) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast ' + (kind || '');
+    t.style.display = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.display = 'none'; }, 4200);
+}
+
+async function api(path, opts) {
+    const resp = await fetch(path, opts || {});
+    const text = await resp.text();
+    let data = {};
+    try { data = JSON.parse(text); } catch (e) { data = { detail: text }; }
+    if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
+    return data;
+}
+
+function fmtSize(n) {
+    n = n || 0;
+    if (n < 1024) return n + ' B';
+    if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+    if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MB';
+    return (n / 1073741824).toFixed(2) + ' GB';
+}
+
+function statusTag(s) {
+    const map = { pending_review: ['orange', '待复核'], confirmed_threat: ['red', '已确认威胁'],
+                  false_positive: ['green', '误报'], restored: ['blue', '已恢复'], deleted: ['grey', '已删除'] };
+    const m = map[s] || ['grey', s || '-'];
+    return '<span class="tag ' + m[0] + '">' + m[1] + '</span>';
+}
+
+function switchTab(name) {
+    document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+    document.querySelector('.tabs button[data-tab="' + name + '"]').classList.add('active');
+    ['quarantine', 'audit', 'threats'].forEach(t => { $('tab-' + t).style.display = (t === name) ? '' : 'none'; });
+    if (name === 'audit') loadAudit();
+    if (name === 'threats') loadThreats();
+}
+
+async function loadStats() {
+    try {
+        const s = await api('/api/stats');
+        $('s-total').textContent = s.total_items;
+        $('s-pending').textContent = (s.by_status || {}).pending_review || 0;
+        $('s-confirmed').textContent = (s.by_status || {}).confirmed_threat || 0;
+        $('s-fp').textContent = (s.by_status || {}).false_positive || 0;
+        $('s-size').textContent = fmtSize(s.total_size);
+    } catch (e) { /* ignore */ }
+}
+
+async function loadItems() {
+    const q = $('q').value.trim();
+    const st = $('status-filter').value;
+    let url = '/api/quarantine';
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (st) params.set('status', st);
+    if (params.toString()) url += '?' + params.toString();
+
+    try {
+        const data = await api(url);
+        if (!data.items.length) {
+            $('items-table').innerHTML = '<div class="empty">隔离区为空 — 没有待复核的文件 🎉</div>';
+            return;
+        }
+        let html = '<table><thead><tr>' +
+            '<th>原始文件名</th><th>威胁名称</th><th>大小</th><th>SHA-256</th><th>隔离时间</th><th>状态</th><th>操作</th>' +
+            '</tr></thead><tbody>';
+        for (const it of data.items) {
+            const sha = (it.sha256 || '').slice(0, 16) + '…';
+            html += '<tr>' +
+                '<td><span class="mono">' + esc(it.original_name) + '</span></td>' +
+                '<td><span class="tag red">' + esc(it.detection_name || '未知') + '</span></td>' +
+                '<td>' + fmtSize(it.size) + '</td>' +
+                '<td class="mono" title="' + esc(it.sha256) + '">' + esc(sha) + '</td>' +
+                '<td class="mono">' + esc(it.quarantined_at || '') + '</td>' +
+                '<td>' + statusTag(it.status) + '</td>' +
+                '<td>' +
+                '<button class="btn btn-grey" onclick="showDetail(\'' + it.quarantine_id + '\')">详情</button>' +
+                '<button class="btn btn-blue" onclick="rescan(\'' + it.quarantine_id + '\')">复扫</button>' +
+                '<button class="btn btn-green" onclick="restore(\'' + it.quarantine_id + '\')">恢复</button>' +
+                '<button class="btn btn-red" onclick="remove(\'' + it.quarantine_id + '\')">删除</button>' +
+                '</td></tr>';
+        }
+        html += '</tbody></table>';
+        $('items-table').innerHTML = html;
+    } catch (e) {
+        $('items-table').innerHTML = '<div class="empty">加载失败: ' + esc(e.message) + '</div>';
+    }
+}
+
+function esc(s) {
+    return String(s === undefined || s === null ? '' : s)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function showDetail(id) {
+    try {
+        const it = await api('/api/quarantine/' + encodeURIComponent(id));
+        openModal('隔离文件详情', JSON.stringify(it, null, 2));
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function rescan(id) {
+    toast('正在重新扫描…');
+    try {
+        const r = await api('/api/quarantine/' + encodeURIComponent(id) + '/rescan', { method: 'POST' });
+        if (r.verdict === 'CLEAN') toast('复扫结果：CLEAN（当前 KSE 未检出，可能是误报）', 'ok');
+        else if (r.verdict === 'DETECT') toast('复扫结果：DETECT — ' + (r.detection_name || ''), 'err');
+        else toast('复扫结果：' + r.verdict, '');
+        loadItems(); loadStats();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function restore(id) {
+    const target = prompt('恢复到绝对路径（留空则使用记录的原始路径）：', '');
+    if (target === null) return;
+    let url = '/api/quarantine/' + encodeURIComponent(id) + '/restore';
+    if (target) url += '?target_path=' + encodeURIComponent(target);
+    try {
+        const r = await api(url, { method: 'POST' });
+        toast('已恢复到: ' + r.restored_to, 'ok');
+        loadItems(); loadStats();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function remove(id) {
+    if (!confirm('确认永久删除该隔离文件？此操作不可恢复。')) return;
+    try {
+        await api('/api/quarantine/' + encodeURIComponent(id), { method: 'DELETE' });
+        toast('已删除', 'ok');
+        loadItems(); loadStats();
+    } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadAudit() {
+    try {
+        const data = await api('/api/audit?limit=200');
+        if (!data.records.length) { $('audit-table').innerHTML = '<div class="empty">暂无审计记录</div>'; return; }
+        let html = '<table><thead><tr><th>时间</th><th>事件</th><th>详情</th></tr></thead><tbody>';
+        for (const r of data.records) {
+            const copy = Object.assign({}, r); delete copy.ts; delete copy.event;
+            html += '<tr><td class="mono">' + esc(r.ts) + '</td>' +
+                '<td><span class="tag blue">' + esc(r.event) + '</span></td>' +
+                '<td class="mono">' + esc(JSON.stringify(copy)) + '</td></tr>';
+        }
+        $('audit-table').innerHTML = html + '</tbody></table>';
+    } catch (e) { $('audit-table').innerHTML = '<div class="empty">加载失败: ' + esc(e.message) + '</div>'; }
+}
+
+async function loadThreats() {
+    try {
+        const s = await api('/api/stats');
+        let html = '<h3 style="margin-top:0">按威胁名称统计</h3>';
+        const entries = Object.entries(s.by_threat || {}).sort((a, b) => b[1] - a[1]);
+        if (!entries.length) html += '<div class="empty">暂无数据</div>';
+        else {
+            html += '<table><thead><tr><th>威胁名称</th><th>数量</th></tr></thead><tbody>';
+            for (const [name, count] of entries) {
+                html += '<tr><td><span class="tag red">' + esc(name) + '</span></td><td>' + count + '</td></tr>';
+            }
+            html += '</tbody></table>';
+        }
+        html += '<h3>按状态统计</h3><table><thead><tr><th>状态</th><th>数量</th></tr></thead><tbody>';
+        for (const [name, count] of Object.entries(s.by_status || {})) {
+            html += '<tr><td>' + statusTag(name) + '</td><td>' + count + '</td></tr>';
+        }
+        html += '</tbody></table><p class="sec">隔离目录: ' + esc(s.quarantine_dir) + '</p>';
+        $('threats-body').innerHTML = html;
+    } catch (e) { $('threats-body').innerHTML = '<div class="empty">加载失败</div>'; }
+}
+
+function openModal(title, body) {
+    $('modal-title').textContent = title;
+    $('modal-body').textContent = body;
+    $('modal-bg').style.display = 'flex';
+}
+function closeModal() { $('modal-bg').style.display = 'none'; }
+
+loadStats();
+loadItems();
+setInterval(loadStats, 30000);
+</script>
+</body>
+</html>

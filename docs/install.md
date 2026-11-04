@@ -509,6 +509,95 @@ ls -la /opt/kaspersky/quarantine/ | grep test_eicar
 
 ---
 
+## 12. 第十二步：MCP Server 与隔离区复核台部署
+
+### 12.1 MCP Server（Codex / Claude Code 等原生接入）
+
+MCP Server 让任何支持 MCP 协议的 Agent 零改造获得扫描能力。
+
+```bash
+# 1. 依赖
+python3 -m venv /opt/ai-stack/mcp-venv
+/opt/ai-stack/mcp-venv/bin/pip install -r gateway/mcp-server/requirements.txt
+
+# 2. 程序
+sudo cp gateway/mcp-server/server.py /opt/ai-stack/mcp-server/server.py
+
+# 3. 生成客户端配置模板
+cat > /opt/ai-stack/mcp-server/mcp-config.json << 'EOF'
+{
+  "mcpServers": {
+    "kse-ai-gateway": {
+      "command": "/opt/ai-stack/mcp-venv/bin/python",
+      "args": ["/opt/ai-stack/mcp-server/server.py"],
+      "env": {
+        "KSE_SCAN_GATEWAY": "http://127.0.0.1:8000",
+        "KSE_SCAN_TIMEOUT": "300"
+      }
+    }
+  }
+}
+EOF
+```
+
+把上面的 JSON 合并到客户端的 MCP 配置中即可（Codex / Claude Code / Claude Desktop 均支持）。
+
+**提供的工具**：`scan_file`、`scan_text`、`scan_url`、`scan_skill_pkg`、`kse_status`。
+
+**验证**：
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}' \
+  | /opt/ai-stack/mcp-venv/bin/python /opt/ai-stack/mcp-server/server.py
+```
+
+> ⚠️ MCP Server 必须通过 `env` 显式指定 `KSE_SCAN_GATEWAY`，否则会回落到 `127.0.0.1:8000`。
+
+### 12.2 隔离区复核台
+
+```bash
+# 程序
+sudo mkdir -p /opt/ai-stack/quarantine-console/templates
+sudo cp gateway/quarantine-console/app.py /opt/ai-stack/quarantine-console/
+sudo cp gateway/quarantine-console/templates/index.html /opt/ai-stack/quarantine-console/templates/
+
+# systemd
+sudo cp gateway/systemd/quarantine-console.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now quarantine-console
+```
+
+**验证**：
+
+```bash
+curl http://127.0.0.1:8004/health
+# 浏览器打开 http://<服务器IP>:8004
+```
+
+> ⚠️ 复核台默认**无鉴权**，请仅在内网访问，或置于 Nginx + Basic Auth / mTLS 反向代理之后。
+> 复核台要执行复扫，需要把隔离区目录加入 Scan Gateway 的 `ALLOWED_SCAN_DIRS`：
+
+```bash
+ALLOWED_SCAN_DIRS=/opt/kaspersky/scanqueue,/opt/kaspersky/quarantine,/root/ai-stack/ollama/models/blobs
+sudo systemctl restart scan-gateway
+```
+
+### 12.3 URL 扫描的前置配置
+
+KSE 的 URL 扫描需要在 Web UI 中放行：
+
+`Settings → Service` → **Locations where remote scanning is allowed** → 添加需要扫描的 URL 或规则 →
+Save → `systemctl restart kavhttpd`。
+
+配置完成后可验证：
+
+```bash
+curl -X POST http://127.0.0.1:8000/scan/url \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com/"}'
+```
+
+---
 ## 13. 附录
 
 ### 13.1 端口清单

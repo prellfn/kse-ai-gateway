@@ -133,6 +133,51 @@ function scanLocalFile(filePath) {
   });
 }
 
+/** 扫描 URL (钓鱼 / 恶意链接) */
+function scanUrl(url) {
+  return new Promise((resolve) => {
+    const payload = JSON.stringify({ url: url, timeout: 60 });
+    const urlObj = new URL("/scan/url", SCAN_GATEWAY);
+    const req = http.request(
+      {
+        hostname: urlObj.hostname,
+        port: urlObj.port || 80,
+        path: urlObj.pathname,
+        method: "POST",
+        timeout: SCAN_TIMEOUT,
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(payload),
+        },
+      },
+      (res) => {
+        let data = "";
+        res.on("data", (c) => (data += c));
+        res.on("end", () => {
+          try {
+            resolve(JSON.parse(data));
+          } catch (e) {
+            resolve({ verdict: "SCAN_ERROR", error: e.message });
+          }
+        });
+      }
+    );
+    req.on("timeout", () => {
+      req.destroy();
+      resolve({ verdict: "SCAN_ERROR", error: "timeout" });
+    });
+    req.on("error", (e) => resolve({ verdict: "SCAN_ERROR", error: e.message }));
+    req.write(payload);
+    req.end();
+  });
+}
+
+/** 从命令或参数中提取 URL */
+function extractUrls(text) {
+  if (!text) return [];
+  const matches = text.match(/https?:\/\/[^\s"'`)\]<>]+/gi) || [];
+  return [...new Set(matches)].slice(0, 20);
+}
 /** 从命令中提取脚本文件路径 */
 function extractFilePathFromCommand(command) {
   if (!command) return null;
@@ -195,6 +240,29 @@ async function handleBeforeToolCall(toolName, params) {
       return;
     }
 
+    // ---- 拦截点四: web fetch (URL 扫描) ----
+    if (
+      toolName === "web_fetch" ||
+      toolName === "fetch" ||
+      toolName === "webfetch" ||
+      toolName === "browse" ||
+      toolName === "http_request" ||
+      toolName === "open_url"
+    ) {
+      const url =
+        params.url || params.link || params.href || params.uri || params.target_url || params.address;
+      if (!url) return;
+      debugLog("扫描 URL: " + url);
+      const result = await scanUrl(url);
+      if (result.verdict === "DETECT") {
+        debugLog("检出威胁 URL，阻止访问: " + url + " - " + result.detection_name);
+        return block(
+          `[Kaspersky] 检出威胁 URL: ${result.detection_name}，访问已被阻止: ${url}`
+        );
+      }
+      debugLog("URL 扫描通过: " + url);
+      return;
+    }
     // ---- 拦截点二: exec ----
     if (toolName === "exec" || toolName === "shell" || toolName === "bash") {
       const command = params.command || params.cmd || params.script || "";
@@ -242,6 +310,18 @@ async function handleBeforeToolCall(toolName, params) {
         }
       }
 
+      // B2. 命令中出现的 URL (钓鱼链接 / 恶意跳转)
+      const urls = extractUrls(command);
+      for (const u of urls) {
+        debugLog("扫描命令中的 URL: " + u);
+        const urlResult = await scanUrl(u);
+        if (urlResult.verdict === "DETECT") {
+          debugLog("检出威胁 URL，阻止执行: " + u + " - " + urlResult.detection_name);
+          return block(
+            `[Kaspersky] 检出威胁 URL: ${urlResult.detection_name}，命令已被阻止: ${u}`
+          );
+        }
+      }
       // C. Skill 下载命令 (扫描命令文本本身)
       const skillCmd = detectSkillDownload(command);
       if (skillCmd) {

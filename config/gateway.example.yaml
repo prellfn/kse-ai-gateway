@@ -79,3 +79,43 @@ watcher:
 
 audit:
   retain_days: 90
+# ===========================================================================
+# v1.1 新增：MCP Server / 隔离区复核台 / URL 扫描 / 压缩包深度扫描
+# ===========================================================================
+
+mcp_server:
+  # MCP Server 以 stdio 运行，由客户端拉起；此处为其环境变量
+  scan_gateway: "http://127.0.0.1:8000"
+  timeout: 300
+  max_text_bytes: 52428800
+  tools:
+    - scan_file        # 扫描本机文件
+    - scan_text        # 扫描文本内容（内存，不落盘）
+    - scan_url         # 扫描 URL（钓鱼 / 恶意链接）
+    - scan_skill_pkg   # 深度扫描 Skill / 插件压缩包
+    - kse_status       # 网关连通性与配置状态
+
+quarantine_console:
+  listen: "0.0.0.0:8004"
+  scan_gateway: "http://127.0.0.1:8000"
+  quarantine_dir: "/opt/kaspersky/quarantine"
+  audit_log: "/opt/ai-stack/scan-gateway/logs/audit.jsonl"
+  max_audit_lines: 2000
+  # 默认无鉴权，请置于反向代理（Nginx + Basic Auth / mTLS）之后
+  auth_required: false
+
+url_scan:
+  enabled: true
+  timeout: 60
+  # 需在 KSE Web UI -> Settings -> Service ->
+  # "Locations where remote scanning is allowed" 中放行相应 URL
+  block_on_detect: true
+
+package_scan:
+  enabled: true
+  timeout: 300
+  # 压缩包炸弹与 Zip Slip 防护阈值
+  max_members: 5000
+  max_unpacked_bytes: 524288000
+  max_compression_ratio: 100
+  formats: [zip, tar, tar.gz, tar.bz2, tar.xz]

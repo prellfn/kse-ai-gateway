@@ -24,6 +24,11 @@ jobs:
       - name: Python 语法编译检查
         run: python -m compileall -q gateway/
 
+      - name: 配置示例 YAML 校验
+        run: |
+          pip install pyyaml
+          python -c "import yaml;yaml.safe_load(open('config/gateway.example.yaml',encoding='utf-8'));print('YAML OK')"
+
   shell:
     runs-on: ubuntu-latest
     steps:

@@ -587,3 +587,78 @@ Remove-Item "$env:USERPROFILE\.openclaw\quarantine\*" -Force
 | 新文件未被扫描 | 不在监控目录/排除列表 | 检查日志是否有 `SCAN:` 记录 |
 | `找不到与参数名称 Form 匹配` | PS 5.1 不支持 `-Form` | 用 `curl.exe` 而非 `Invoke-RestMethod -Form` |
 | 日志频繁「Cleaned known files cache」 | 缓存阈值过低 | 确认 `CacheLimit` 为 500000 |
+---
+
+## 11. 隔离区复核台管理（:8004）
+
+### 11.1 服务管理
+
+```bash
+systemctl status quarantine-console
+systemctl restart quarantine-console
+curl http://127.0.0.1:8004/health
+```
+
+### 11.2 API 速查
+
+```bash
+# 列出待复核
+curl "http://127.0.0.1:8004/api/quarantine?status=pending_review"
+
+# 关键字搜索
+curl "http://127.0.0.1:8004/api/quarantine?q=EICAR"
+
+# 复扫验证误报
+curl -X POST http://127.0.0.1:8004/api/quarantine/<id>/rescan
+
+# 标记结论
+curl -X POST "http://127.0.0.1:8004/api/quarantine/<id>/mark?status=false_positive"
+
+# 恢复
+curl -X POST http://127.0.0.1:8004/api/quarantine/<id>/restore
+curl -X POST "http://127.0.0.1:8004/api/quarantine/<id>/restore?target_path=/opt/kaspersky/scanqueue/xxx"
+
+# 删除
+curl -X DELETE http://127.0.0.1:8004/api/quarantine/<id>
+
+# 审计流水与统计
+curl "http://127.0.0.1:8004/api/audit?limit=100"
+curl http://127.0.0.1:8004/api/stats
+```
+
+### 11.3 常见问题
+
+| 现象 | 原因 | 解决 |
+| --- | --- | --- |
+| 复扫报「路径不在允许的扫描目录内」 | 隔离区未加入白名单 | `.env` 的 `ALLOWED_SCAN_DIRS` 加入 `/opt/kaspersky/quarantine` 后重启 scan-gateway |
+| 复核台打不开 | 端口未放行 | `ufw allow 8002/tcp`（按需，建议限内网） |
+| 列表为空但隔离区有文件 | sidecar 缺失 | 网关会在读取时从文件名推断，仍应检查 Scan Gateway 写权限 |
+| 恢复失败 | 原始路径不存在或无权限 | 用 `target_path` 指定新路径 |
+
+---
+
+## 12. MCP Server 运维
+
+MCP Server 以 stdio 方式运行，由 MCP 客户端拉起，**不注册 systemd 服务**。
+
+### 12.1 排障
+
+```bash
+# 手工拉起（会等待 stdin，Ctrl+C 退出）
+/opt/ai-stack/mcp-venv/bin/python /opt/ai-stack/mcp-server/server.py
+
+# 检查依赖
+/opt/ai-stack/mcp-venv/bin/pip list | grep mcp
+
+# 确认网关可达
+curl http://127.0.0.1:8000/health
+```
+
+### 12.2 常见问题
+
+| 现象 | 原因 | 解决 |
+| --- | --- | --- |
+| 客户端看不到工具 | 未在客户端配置中注册 MCP Server | 合并 `mcp-config.json` 到客户端配置 |
+| 工具调用报「无法连接 Scan Gateway」 | `KSE_SCAN_GATEWAY` 未设置或跨机 | 在 `env` 中显式设置为网关地址 |
+| `scan_file` 报路径不允许 | 文件不在白名单目录 | 调整 `ALLOWED_SCAN_DIRS` |
+| stdio 无输出 | 被重定向到 stdout | MCP 协议必须走 stdout，日志请写 stderr |

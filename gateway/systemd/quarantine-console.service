@@ -1,0 +1,16 @@
+[Unit]
+Description=KSE Quarantine Review Console
+After=network.target scan-gateway.service
+Wants=scan-gateway.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-stack/quarantine-console
+EnvironmentFile=-/opt/ai-stack/quarantine-console/.env
+ExecStart=/opt/ai-stack/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8004
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
