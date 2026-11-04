@@ -30,6 +30,7 @@
 - [AI Agent 接入](#ai-agent-接入)
 - [仓库结构](#仓库结构)
 - [快速开始](#快速开始)
+- [验证](#验证)
 - [核心 API](#核心-api)
 - [配置](#配置)
 - [判定与处置策略](#判定与处置策略)
@@ -315,6 +316,9 @@ kse-ai-gateway/
 │   └── workbuddy/                 # WorkBuddy: Skill + 下载代理 + install.sh
 ├── scripts/
 │   ├── install_ubuntu.sh          # Linux 一键部署网关
+│   ├── verify.sh                  # Linux 分层验证（L0-L5）
+│   ├── verify-windows.ps1         # Windows 端验证（插件 + Watcher）
+│   ├── mock_scan_gateway.py       # 模拟网关（无许可证联调用）
 │   └── backup_kse.sh              # 备份 / 恢复脚本
 ├── config/
 │   └── gateway.example.yaml       # 全量配置示例
@@ -390,6 +394,73 @@ curl -X POST http://127.0.0.1:8000/scan/file \
 
 ---
 
+## 验证
+
+新环境部署后如何确认真的通了 —— **分层验证**，从 KSE 引擎本身一路测到 Agent 真实场景。
+完整指南见 [`docs/verification.md`](docs/verification.md)。
+
+### 一条命令跑完网关侧
+
+```bash
+sudo ./scripts/verify.sh                 # L0-L5 全跑
+sudo ./scripts/verify.sh --layer l1      # 只跑某一层
+sudo KSE_TOKEN=<明文Token> ./scripts/verify.sh --layer l0   # 含 KSE 直连测试
+```
+
+输出形如：
+
+```
+── L1  Scan Gateway (:8000) ─────────────────────
+  ✓ PASS  健康检查 /health                        status=ok
+  ✓ PASS  scan/file 干净文件放行                   verdict=CLEAN
+  ✓ PASS  scan/file EICAR 检出                     verdict=DETECT, detection=EICAR-Test-File
+  ✓ PASS  威胁文件自动隔离                         quarantined=true
+  ✓ PASS  scan/package 内藏 EICAR 检出              verdict=DETECT, threats=1
+  ...
+==============================================
+ 汇总:  PASS 18  FAIL 0  WARN 1  SKIP 1
+==============================================
+```
+
+**分层说明**
+
+| 层 | 验证对象 | 关键断言 |
+| --- | --- | --- |
+| L0 | KSE 引擎直连 | EICAR 直扫 DETECT；无 Token 被拒 401/403 |
+| L1 | Scan Gateway | 5 个端点；**压缩包内藏 EICAR 必须检出** |
+| L2 | Upload Gateway | 干净文件入库；EICAR 返回 403（Fail-Closed） |
+| L3 | 隔离区复核台 | 列表 / 统计 / 复扫可用 |
+| L4 | MCP Server | initialize + 5 个工具注册 |
+| L5 | systemd + 审计 | 4 个服务 active；`audit.jsonl` 有记录 |
+
+### Windows / Agent 侧
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\verify-windows.ps1 `
+    -ScanGateway "http://10.0.0.1:8000"
+```
+
+覆盖网关连通性、EICAR 上传扫描、**OpenClaw 插件单元验证**、File Watcher 监控隔离、日志检查。
+
+### 无许可证联调（MOCK 模式）
+
+没有 KSE 许可证时，可以用仓库自带的模拟网关跑通除真实检测外的全部链路：
+
+```bash
+python3 scripts/mock_scan_gateway.py --port 8000     # 终端 A
+sudo ./scripts/verify.sh --layer l1                  # 终端 B
+```
+
+插件探针可脱离任何服务器单独跑：
+
+```bash
+node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://127.0.0.1:8000
+```
+
+> 探针会先探测网关连通性：网关不可达时返回 `GATEWAY-UNREACHABLE` 而非误判为通过
+> （插件是 Fail-Open，网关挂了本来就放行，不加这个判断会出现「假绿」）。
+
+---
 ## 核心 API
 
 完整定义见 **[`docs/api.md`](docs/api.md)**。
@@ -489,6 +560,7 @@ WORKSPACE_SLUG=your-workspace-slug
 | [`docs/install.md`](docs/install.md) | 完整安装手册（11 步，含全部命令与验证） |
 | [`docs/operations.md`](docs/operations.md) | 运维手册（服务管理、日志、故障排查、病毒库更新、备份恢复） |
 | [`docs/api.md`](docs/api.md) | API 参考（4 个服务的完整接口定义） |
+| [`docs/verification.md`](docs/verification.md) | **新环境验证指南**（分层验证 + 验收清单 + 排障） |
 | [`docs/architecture.md`](docs/architecture.md) | 架构拓扑与数据流时序图 |
 | [`docs/kse_architecture.html`](docs/kse_architecture.html) | 交互式架构图（浏览器打开） |
 | [`gateway/mcp-server/README.md`](gateway/mcp-server/README.md) | MCP Server 接入说明 |

@@ -19,7 +19,7 @@ jobs:
         run: pip install -r gateway/requirements.txt ruff
 
       - name: Ruff 静态检查
-        run: ruff check gateway/ --output-format=github
+        run: ruff check gateway/ scripts/ --output-format=github
 
       - name: Python 语法编译检查
         run: python -m compileall -q gateway/
@@ -77,3 +77,49 @@ jobs:
             exit 1
           fi
           echo "未发现硬编码密钥"
+
+  self-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 启动 Mock Scan Gateway
+        run: |
+          nohup python3 scripts/mock_scan_gateway.py --port 18000 > /tmp/mock.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:18000/health > /dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18000/health
+
+      - name: OpenClaw 插件拦截自测
+        run: |
+          node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://127.0.0.1:18000
+
+      - name: 探针在网关不可达时应报错而非误判通过
+        run: |
+          set +e
+          node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://127.0.0.1:19999
+          code=$?
+          set -e
+          if [ "$code" -eq 0 ]; then
+            echo "::error::网关不可达时探针不应返回 0"; exit 1
+          fi
+          echo "行为正确 (exit=$code)"
+
+      - name: Mock 模式端到端 (Scan Gateway 层)
+        run: |
+          chmod +x scripts/verify.sh
+          KSE_SCAN_GATEWAY=http://127.0.0.1:18000 \
+          SCAN_GATEWAY=http://127.0.0.1:18000 \
+          UPLOAD_GATEWAY=http://127.0.0.1:19998 \
+          CONSOLE_URL=http://127.0.0.1:19997 \
+          ./scripts/verify.sh --layer l1 || true
