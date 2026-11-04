@@ -1,0 +1,16 @@
+[Unit]
+Description=AnythingLLM Secure Upload Gateway
+After=network.target scan-gateway.service
+Wants=scan-gateway.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-stack/upload-gateway
+EnvironmentFile=-/opt/ai-stack/upload-gateway/.env
+ExecStart=/opt/ai-stack/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8002
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

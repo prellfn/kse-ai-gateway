@@ -1,0 +1,15 @@
+[Unit]
+Description=Ollama Model Download Watcher (KSE auto-quarantine)
+After=network.target scan-gateway.service
+Wants=scan-gateway.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-stack
+ExecStart=/opt/ai-stack/ollama-watcher.sh
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

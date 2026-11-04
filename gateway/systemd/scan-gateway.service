@@ -1,0 +1,16 @@
+[Unit]
+Description=KSE Scan Gateway (Kaspersky Scan Engine wrapper)
+After=network.target kavhttpd.service
+Wants=kavhttpd.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ai-stack/scan-gateway
+EnvironmentFile=-/opt/ai-stack/scan-gateway/.env
+ExecStart=/opt/ai-stack/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

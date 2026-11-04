@@ -1,0 +1,15 @@
+{
+  "name": "kse-security-gate",
+  "version": "1.0.0",
+  "description": "Kaspersky Scan Engine security gate for OpenClaw",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "check": "node -e \"require('./index.js'); console.log('OK')\""
+  },
+  "openclaw": {
+    "extensions": [
+      "./index.js"
+    ]
+  }
+}

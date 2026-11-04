@@ -1,31 +1,39 @@
-# Logs & Quarantine
+# ---- 密钥与本地配置 (严禁提交) ----
+.env
+.env.*
+!.env.example
+config/gateway.yaml
+config/*.local.yaml
+*.pem
+*.key
+!*.example.pem
+
+# ---- 运行时数据 ----
 logs/
 *.log
 *.jsonl
 quarantine/
+scanqueue/
+opt/
 
-# Local config with secrets
-config/gateway.yaml
-.env
-.env.*
-
-# Python
+# ---- Python ----
 __pycache__/
 *.py[cod]
+*.egg-info/
 .venv/
 venv/
 dist/
 build/
-*.egg-info/
 
-# Go / Rust / Node (if applicable)
-bin/
+# ---- Node ----
 node_modules/
-target/
+npm-debug.log*
+package-lock.json.bak
 
-# OS & IDE
+# ---- 其他 ----
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
 .workbuddy/
+*.bak

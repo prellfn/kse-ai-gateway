@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 安装依赖
+        run: pip install -r gateway/requirements.txt ruff
+
+      - name: Ruff 静态检查
+        run: ruff check gateway/ --output-format=github
+
+      - name: Python 语法编译检查
+        run: python -m compileall -q gateway/
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: ./scripts
+          additional_files: ./watchers/ollama-watcher.sh
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 插件加载检查
+        working-directory: agent/openclaw-plugin
+        run: node -e "require('./index.js'); console.log('OK')"
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 检查是否误提交密钥
+        run: |
+          if grep -rInE "(gho_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|BEGIN (RSA|OPENSSH) PRIVATE KEY)" \
+               --exclude-dir=.git . ; then
+            echo "::error::疑似提交了密钥"; exit 1
+          fi
+          echo "未发现硬编码密钥"

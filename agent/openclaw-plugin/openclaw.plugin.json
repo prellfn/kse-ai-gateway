@@ -1,0 +1,8 @@
+{
+  "id": "kse-security-gate",
+  "name": "Kaspersky Scan Engine Security Gate",
+  "version": "1.0.0",
+  "description": "Kaspersky Scan Engine security gate for OpenClaw — 事前拦截 write / edit / exec 工具调用",
+  "entry": "./index.js",
+  "configSchema": {}
+}

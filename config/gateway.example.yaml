@@ -1,0 +1,81 @@
+# KSE + AI 安全扫描平台 — 网关配置示例
+# 复制为 gateway.yaml 后按实际环境修改; 真实密钥请放在 .env 或 systemd EnvironmentFile 中
+
+server:
+  listen: "0.0.0.0:8000"      # Scan Gateway
+  upload_listen: "0.0.0.0:8002"  # Upload Gateway (8001 被 ClickHouse 占用)
+
+kse:
+  url: "https://127.0.0.1:8443"
+  token: "${KSE_TOKEN}"        # 明文 Token, 不要提交到仓库
+  timeout: 120                 # 秒
+  verify_tls: false
+  # KSE 路径扫描 API: POST /api/v3.0/scanfile  {"timeout":"60000","object":"/path"}
+  # URL 扫描 API:    POST /api/v3.0/checkurl   {"timeout":"60000","object":"https://..."}
+
+paths:
+  scan_queue: "/opt/kaspersky/scanqueue"    # 唯一允许扫描的基目录
+  quarantine: "/opt/kaspersky/quarantine"   # 检出威胁隔离区
+  allowed_scan_dirs:
+    - "/opt/kaspersky/scanqueue"
+    - "/root/ai-stack/ollama/models/blobs"
+  audit_log: "/opt/ai-stack/scan-gateway/logs/audit.jsonl"
+
+limits:
+  max_file_size: 104857600     # 100MB
+  max_upload_size: 104857600
+  allowed_ext:
+    - .pdf
+    - .doc
+    - .docx
+    - .txt
+    - .md
+    - .csv
+    - .xlsx
+    - .pptx
+    - .epub
+
+policy:
+  # Scan Gateway / Upload Gateway: Fail-Closed, 扫描异常不放行
+  on_malicious: block
+  on_suspicious: quarantine
+  on_scan_error: block
+  # OpenClaw Plugin: Fail-Open, 扫描异常不阻断业务
+  agent_plugin_on_scan_error: allow
+
+anythingllm:
+  url: "http://10.0.0.1:3001"
+  api_key: "${ANYTHINGLLM_API_KEY}"
+  workspace_slug: "${WORKSPACE_SLUG}"
+
+agent:
+  openclaw_plugin:
+    scan_gateway: "http://10.0.0.1:8000"
+    timeout: 15
+  windows_watcher:
+    scan_gateway: "http://10.0.0.1:8000"
+    poll_interval: 5
+    max_size: 104857600         # 超过 100MB 跳过
+    exclude_dirs:
+      - "\\out\\"
+      - "\\state\\"
+      - "\\.clawhub\\"
+      - "\\logs\\"
+      - "\\tmp\\"
+    exclude_ext:
+      - .log
+      - .tmp
+      - .lock
+      - .pid
+      - .sqlite-wal
+      - .sqlite-shm
+
+watcher:
+  ollama:
+    watch_dir: "/root/ai-stack/ollama/models/blobs"
+    min_size: 10485760          # 小于 10MB 跳过
+    timeout: 600                # 大模型扫描超时(秒)
+    log: "/var/log/ollama-watcher.log"
+
+audit:
+  retain_days: 90

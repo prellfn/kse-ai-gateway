@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>知识库安全上传</title>
+<style>
+    body { font-family: "Microsoft YaHei", -apple-system, sans-serif; max-width: 640px; margin: 50px auto; padding: 20px; background: #f5f5f5; }
+    .card { background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,.1); }
+    h2 { color: #1976d2; margin-top: 0; }
+    .badge { display: inline-block; background: #006d5b; color: #fff; font-size: 12px; padding: 3px 10px; border-radius: 10px; vertical-align: middle; }
+    .upload-box { border: 2px dashed #ccc; padding: 40px; text-align: center; border-radius: 10px; margin: 20px 0; }
+    .result { margin-top: 20px; padding: 15px; border-radius: 5px; word-break: break-all; }
+    .success { background: #e8f5e9; color: #2e7d32; border-left: 4px solid #2e7d32; }
+    .error { background: #ffebee; color: #c62828; border-left: 4px solid #c62828; }
+    .loading { background: #e3f2fd; color: #1565c0; border-left: 4px solid #1565c0; }
+    button { background: #1976d2; color: #fff; border: none; padding: 12px 40px; border-radius: 5px; cursor: pointer; font-size: 16px; margin-top: 15px; }
+    button:hover { background: #1565c0; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .option { margin: 15px 0; padding: 10px; background: #f9f9f9; border-radius: 5px; }
+    .option label { cursor: pointer; font-size: 14px; }
+    .option .hint { font-size: 12px; color: #888; margin-top: 5px; }
+    .flow { font-size: 12px; color: #888; text-align: center; margin-top: 12px; }
+</style>
+</head>
+<body>
+<div class="card">
+    <h2>知识库安全上传 <span class="badge">Powered by Kaspersky Scan Engine</span></h2>
+    <p>文件先经<strong>卡巴斯基扫描引擎（KSE）</strong>安全扫描，通过后上传到 AnythingLLM。</p>
+    <div class="upload-box">
+        <input type="file" id="fileInput">
+        <div class="option">
+            <label><input type="checkbox" id="addToWorkspace" checked> 同时添加到工作区（可直接问答）</label>
+            <div class="hint">不勾选则仅上传到“我的文档”，稍后可在 AnythingLLM 中手动添加</div>
+        </div>
+        <br><button onclick="uploadFile()" id="uploadBtn">上传并扫描</button>
+    </div>
+    <div id="result"></div>
+    <div class="flow">浏览器 → Upload Gateway(:8002) → Scan Gateway(:8000) → KSE(:8443) → AnythingLLM(:3001)</div>
+</div>
+<script>
+async function uploadFile() {
+    const fileInput = document.getElementById('fileInput');
+    const resultDiv = document.getElementById('result');
+    const btn = document.getElementById('uploadBtn');
+    const addToWorkspace = document.getElementById('addToWorkspace').checked;
+    if (!fileInput.files[0]) { alert('请先选择文件'); return; }
+    btn.disabled = true; btn.textContent = '扫描中...';
+    resultDiv.innerHTML = '<div class="result loading">扫描中，正在进行安全扫描，请稍候...</div>';
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    formData.append('add_to_workspace', addToWorkspace);
+    try {
+        const response = await fetch('/upload', { method: 'POST', body: formData });
+        const data = await response.json();
+        if (response.ok && data.status === 'success') {
+            resultDiv.innerHTML = '<div class="result success">上传成功<br><small>' + (data.message || '') +
+                '<br>SHA256: ' + (data.sha256 || '') + '</small></div>';
+        } else {
+            let msg = data.detail || data.message || ('HTTP ' + response.status);
+            if (typeof msg !== 'string') { msg = JSON.stringify(msg); }
+            resultDiv.innerHTML = '<div class="result error">上传被拒绝<br><small>' + msg + '</small></div>';
+        }
+    } catch (e) {
+        resultDiv.innerHTML = '<div class="result error">请求异常：' + e.message + '</div>';
+    } finally {
+        btn.disabled = false; btn.textContent = '上传并扫描';
+    }
+}
+</script>
+</body>
+</html>

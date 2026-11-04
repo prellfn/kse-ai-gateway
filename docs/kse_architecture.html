@@ -1,0 +1,551 @@
+<html style="margin:0;padding:0;">
+<div style="background:linear-gradient(135deg,#0f172a,#1e293b);min-height:100vh;padding:24px;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#e2e8f0;">
+  <div style="max-width:1100px;margin:0 auto;">
+    <h1 style="font-size:22px;font-weight:700;margin:0 0 6px 0;background:linear-gradient(90deg,#60a5fa,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">KSE + AI 安全扫描平台 — 架构拓扑与数据流</h1>
+    <p style="font-size:13px;color:#94a3b8;margin:0 0 20px 0;">点击下方按钮切换查看不同视图</p>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px;">
+      <button onclick="showView('topology')" id="btn-topology" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#3b82f6;color:#fff;transition:all .2s;">整体拓扑图</button>
+      <button onclick="showView('write')" id="btn-write" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#334155;color:#cbd5e1;transition:all .2s;">① Write拦截</button>
+      <button onclick="showView('exec')" id="btn-exec" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#334155;color:#cbd5e1;transition:all .2s;">② Exec拦截</button>
+      <button onclick="showView('ollama')" id="btn-ollama" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#334155;color:#cbd5e1;transition:all .2s;">③ Ollama监控</button>
+      <button onclick="showView('upload')" id="btn-upload" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#334155;color:#cbd5e1;transition:all .2s;">④ 上传扫描</button>
+      <button onclick="showView('watcher')" id="btn-watcher" style="padding:10px 18px;border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;background:#334155;color:#cbd5e1;transition:all .2s;">⑤ 文件监控</button>
+    </div>
+
+    <div id="view-topology" style="display:block;">
+      <svg viewBox="0 0 1060 620" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="arrow-blue" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/></marker>
+          <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+          <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="arrow-yellow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/></marker>
+          <marker id="arrow-purple" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/></marker>
+        </defs>
+
+        <rect x="20" y="20" width="340" height="580" rx="12" fill="rgba(59,130,246,0.08)" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="6,3"/>
+        <text x="190" y="48" text-anchor="middle" fill="#60a5fa" font-size="15" font-weight="700">Windows Server (OpenClaw)</text>
+
+        <rect x="40" y="60" width="300" height="60" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="190" y="86" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">OpenClaw Gateway</text>
+        <text x="190" y="105" text-anchor="middle" fill="#64748b" font-size="11">127.0.0.1:18789 · MiniMax-M3</text>
+
+        <rect x="40" y="135" width="300" height="75" rx="8" fill="#1e3a5f" stroke="#60a5fa" stroke-width="2"/>
+        <text x="190" y="160" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="700">KSE Security Gate Plugin</text>
+        <text x="190" y="180" text-anchor="middle" fill="#64748b" font-size="11">before_tool_call · write/exec/edit 三拦截点</text>
+        <text x="190" y="198" text-anchor="middle" fill="#34d399" font-size="11">✓ 已验证 EICAR 拦截</text>
+
+        <rect x="40" y="225" width="300" height="80" rx="8" fill="#2d1f4e" stroke="#a78bfa" stroke-width="2"/>
+        <text x="190" y="250" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="700">KSE File Watcher 服务</text>
+        <text x="190" y="270" text-anchor="middle" fill="#64748b" font-size="11">计划任务 KSE-FileWatcher · 定时轮询 5s</text>
+        <text x="190" y="287" text-anchor="middle" fill="#64748b" font-size="10">curl.exe 上传 → Scan Gateway 扫描</text>
+        <text x="190" y="302" text-anchor="middle" fill="#34d399" font-size="10">✓ 已验证 skills 安装文件扫描+隔离</text>
+
+        <rect x="40" y="320" width="300" height="50" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="190" y="342" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">监控目录: workspace · plugins · npm\projects · node_modules</text>
+        <text x="190" y="360" text-anchor="middle" fill="#64748b" font-size="10">排除: \out\ \state\ \.clawhub\ · 超100MB跳过</text>
+
+        <rect x="40" y="385" width="140" height="45" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="110" y="405" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">微信插件</text>
+        <text x="110" y="422" text-anchor="middle" fill="#64748b" font-size="10">openclaw-weixin</text>
+
+        <rect x="200" y="385" width="140" height="45" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="270" y="405" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">openclaw.json</text>
+        <text x="270" y="422" text-anchor="middle" fill="#64748b" font-size="10">plugins 配置</text>
+
+        <rect x="40" y="445" width="300" height="40" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="190" y="470" text-anchor="middle" fill="#94a3b8" font-size="11">node_modules\openclaw (symlink) · 全局 npm 包</text>
+
+        <rect x="40" y="500" width="300" height="55" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="190" y="525" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">Windows 隔离区</text>
+        <text x="190" y="545" text-anchor="middle" fill="#64748b" font-size="10">C:\Users\...\.openclaw\quarantine\</text>
+
+        <rect x="400" y="20" width="640" height="580" rx="12" fill="rgba(52,211,153,0.06)" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6,3"/>
+        <text x="720" y="48" text-anchor="middle" fill="#34d399" font-size="15" font-weight="700">kumadb (Ubuntu 22.04) — 10.254.205.89</text>
+
+        <rect x="430" y="70" width="200" height="80" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="2"/>
+        <text x="530" y="100" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">KSE 扫描引擎</text>
+        <text x="530" y="120" text-anchor="middle" fill="#64748b" font-size="11">HTTPS + Token 认证</text>
+        <text x="530" y="137" text-anchor="middle" fill="#64748b" font-size="11">:8443 (API) · :443 (Web UI)</text>
+
+        <rect x="660" y="70" width="200" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="2"/>
+        <text x="760" y="100" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">Scan Gateway</text>
+        <text x="760" y="120" text-anchor="middle" fill="#64748b" font-size="11">Python + FastAPI</text>
+        <text x="760" y="137" text-anchor="middle" fill="#64748b" font-size="11">:8000 · /scan/file /upload</text>
+
+        <rect x="890" y="70" width="130" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="955" y="100" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">Upload Gateway</text>
+        <text x="955" y="120" text-anchor="middle" fill="#64748b" font-size="11">:8002</text>
+        <text x="955" y="137" text-anchor="middle" fill="#64748b" font-size="10">安全上传页面</text>
+
+        <line x1="630" y1="110" x2="660" y2="110" stroke="#34d399" stroke-width="2" marker-end="url(#arrow-green)"/>
+        <text x="645" y="100" text-anchor="middle" fill="#34d399" font-size="9">127.0.0.1</text>
+
+        <rect x="430" y="180" width="180" height="65" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="520" y="208" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">/opt/kaspersky/scanqueue</text>
+        <text x="520" y="228" text-anchor="middle" fill="#64748b" font-size="10">扫描队列目录</text>
+
+        <rect x="640" y="180" width="180" height="65" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="730" y="208" text-anchor="middle" fill="#fca5a5" font-size="12" font-weight="600">/opt/kaspersky/quarantine</text>
+        <text x="730" y="228" text-anchor="middle" fill="#64748b" font-size="10">Linux 威胁隔离区 (自动隔离)</text>
+
+        <rect x="850" y="180" width="170" height="65" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="935" y="208" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">AnythingLLM</text>
+        <text x="935" y="228" text-anchor="middle" fill="#64748b" font-size="10">:3001 · 知识库</text>
+
+        <line x1="760" y1="150" x2="730" y2="180" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-red)"/>
+        <text x="760" y="170" text-anchor="middle" fill="#f87171" font-size="9">检出威胁→隔离</text>
+
+        <line x1="890" y1="110" x2="850" y2="195" stroke="#34d399" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+        <text x="885" y="160" fill="#34d399" font-size="9">上传→扫描</text>
+
+        <rect x="430" y="275" width="290" height="90" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="575" y="303" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">Ollama (Docker)</text>
+        <text x="575" y="323" text-anchor="middle" fill="#64748b" font-size="11">:11434 · 模型推理服务</text>
+        <text x="575" y="340" text-anchor="middle" fill="#64748b" font-size="10">挂载: /root/ai-stack/ollama → /root/.ollama</text>
+        <text x="575" y="356" text-anchor="middle" fill="#fbbf24" font-size="10">模型目录: models/blobs/</text>
+
+        <rect x="750" y="275" width="270" height="90" rx="8" fill="#3f2d1a" stroke="#f59e0b" stroke-width="2"/>
+        <text x="885" y="303" text-anchor="middle" fill="#fcd34d" font-size="13" font-weight="700">ollama-watcher 服务</text>
+        <text x="885" y="323" text-anchor="middle" fill="#64748b" font-size="11">inotifywait 监控 blobs 目录</text>
+        <text x="885" y="340" text-anchor="middle" fill="#64748b" font-size="10">新文件→/scan/file→检出→自动隔离</text>
+        <text x="885" y="356" text-anchor="middle" fill="#34d399" font-size="10">✓ 已验证 EICAR 自动隔离</text>
+
+        <line x1="720" y1="320" x2="750" y2="320" stroke="#fbbf24" stroke-width="2" marker-end="url(#arrow-yellow)"/>
+        <text x="735" y="310" text-anchor="middle" fill="#fbbf24" font-size="9">监控</text>
+
+        <line x1="885" y1="365" x2="730" y2="245" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-red)"/>
+        <text x="820" y="395" fill="#f87171" font-size="9">检出威胁→隔离</text>
+
+        <rect x="430" y="395" width="590" height="70" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="725" y="423" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">Python 虚拟环境 /opt/ai-stack/venv</text>
+        <text x="725" y="443" text-anchor="middle" fill="#64748b" font-size="11">fastapi · uvicorn · httpx · python-multipart</text>
+        <text x="725" y="460" text-anchor="middle" fill="#64748b" font-size="10">Scan Gateway + Upload Gateway 共用</text>
+
+        <rect x="430" y="490" width="280" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="570" y="518" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">systemd 服务</text>
+        <text x="570" y="538" text-anchor="middle" fill="#64748b" font-size="10">scan-gateway · upload-gateway · ollama-watcher</text>
+
+        <rect x="740" y="490" width="280" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+        <text x="880" y="518" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">KUMA (ClickHouse)</text>
+        <text x="880" y="538" text-anchor="middle" fill="#64748b" font-size="10">占用 8001 端口 · 与 KSE 同机</text>
+
+        <rect x="430" y="570" width="590" height="20" rx="4" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="725" y="585" text-anchor="middle" fill="#475569" font-size="10">飞书文档: 运维手册 + 安装手册 (含完整部署步骤)</text>
+
+        <path d="M 340 172 Q 380 172 400 110" stroke="#60a5fa" stroke-width="2.5" fill="none" marker-end="url(#arrow-blue)"/>
+        <text x="365" y="145" fill="#60a5fa" font-size="10" font-weight="600">Plugin→/upload</text>
+
+        <path d="M 340 265 Q 390 265 420 130" stroke="#a78bfa" stroke-width="2.5" fill="none" marker-end="url(#arrow-purple)"/>
+        <text x="365" y="245" fill="#a78bfa" font-size="10" font-weight="600">Watcher→/upload</text>
+
+        <line x1="190" y1="305" x2="190" y2="500" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#arrow-red)"/>
+        <text x="200" y="410" fill="#f87171" font-size="9">检出→隔离</text>
+      </svg>
+    </div>
+
+    <div id="view-write" style="display:none;">
+      <svg viewBox="0 0 1060 480" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="aw" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/></marker>
+          <marker id="aw-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="aw-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+        </defs>
+        <text x="530" y="35" text-anchor="middle" fill="#60a5fa" font-size="16" font-weight="700">数据流①：OpenClaw write 工具拦截</text>
+
+        <rect x="40" y="70" width="160" height="80" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="120" y="100" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">AI Agent</text>
+        <text x="120" y="120" text-anchor="middle" fill="#64748b" font-size="11">调用 write 工具</text>
+        <text x="120" y="138" text-anchor="middle" fill="#64748b" font-size="10">path + content</text>
+
+        <rect x="250" y="70" width="180" height="80" rx="8" fill="#1e3a5f" stroke="#60a5fa" stroke-width="2"/>
+        <text x="340" y="100" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="700">KSE Plugin</text>
+        <text x="340" y="120" text-anchor="middle" fill="#64748b" font-size="11">before_tool_call</text>
+        <text x="340" y="138" text-anchor="middle" fill="#34d399" font-size="10">✓ hook 触发</text>
+
+        <rect x="480" y="70" width="180" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="570" y="100" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">Scan Gateway</text>
+        <text x="570" y="120" text-anchor="middle" fill="#64748b" font-size="11">/scan/upload</text>
+        <text x="570" y="138" text-anchor="middle" fill="#64748b" font-size="10">multipart 上传内容</text>
+
+        <rect x="710" y="70" width="160" height="80" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="2"/>
+        <text x="790" y="100" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">KSE 引擎</text>
+        <text x="790" y="120" text-anchor="middle" fill="#64748b" font-size="11">扫描文件内容</text>
+        <text x="790" y="138" text-anchor="middle" fill="#64748b" font-size="10">返回 verdict</text>
+
+        <rect x="910" y="70" width="120" height="80" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="970" y="100" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="600">隔离区</text>
+        <text x="970" y="120" text-anchor="middle" fill="#64748b" font-size="11">威胁文件</text>
+        <text x="970" y="138" text-anchor="middle" fill="#64748b" font-size="10">自动保存</text>
+
+        <line x1="200" y1="110" x2="250" y2="110" stroke="#60a5fa" stroke-width="2" marker-end="url(#aw)"/>
+        <text x="225" y="100" text-anchor="middle" fill="#60a5fa" font-size="9">①工具调用</text>
+        <line x1="430" y1="110" x2="480" y2="110" stroke="#60a5fa" stroke-width="2" marker-end="url(#aw)"/>
+        <text x="455" y="100" text-anchor="middle" fill="#60a5fa" font-size="9">②上传内容</text>
+        <line x1="660" y1="110" x2="710" y2="110" stroke="#60a5fa" stroke-width="2" marker-end="url(#aw)"/>
+        <text x="685" y="100" text-anchor="middle" fill="#60a5fa" font-size="9">③127.0.0.1调用</text>
+        <line x1="870" y1="110" x2="910" y2="110" stroke="#f87171" stroke-width="1.5" stroke-dasharray="4,2" marker-end="url(#aw-r)"/>
+        <text x="890" y="100" text-anchor="middle" fill="#f87171" font-size="9">④DETECT→隔离</text>
+        <path d="M 790 150 Q 790 180 570 180 Q 340 180 340 150" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#aw-g)"/>
+        <text x="565" y="195" text-anchor="middle" fill="#34d399" font-size="10">⑤返回扫描结果 (DETECT/CLEAN)</text>
+
+        <rect x="40" y="220" width="480" height="100" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="280" y="250" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">检出威胁 (DETECT)</text>
+        <text x="280" y="275" text-anchor="middle" fill="#fca5a5" font-size="12">Plugin 返回 { block: true, blockReason: "[Kaspersky] 检出威胁..." }</text>
+        <text x="280" y="298" text-anchor="middle" fill="#f87171" font-size="11">→ write 工具被阻止，文件不写入磁盘</text>
+        <text x="280" y="316" text-anchor="middle" fill="#64748b" font-size="10">示例: EICAR-Test-File 被成功拦截</text>
+
+        <rect x="560" y="220" width="470" height="100" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="795" y="250" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">扫描通过 (CLEAN)</text>
+        <text x="795" y="275" text-anchor="middle" fill="#86efac" font-size="12">Plugin 返回 {} (不阻止)</text>
+        <text x="795" y="298" text-anchor="middle" fill="#34d399" font-size="11">→ write 工具正常执行，文件写入磁盘</text>
+        <text x="795" y="316" text-anchor="middle" fill="#64748b" font-size="10">扫描异常时 fail-open 放行 (不阻断业务)</text>
+
+        <rect x="40" y="350" width="990" height="110" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="535" y="378" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">关键特点</text>
+        <text x="80" y="405" fill="#60a5fa" font-size="11">• 文件内容在写入磁盘前就被扫描（内存中拦截），不落盘</text>
+        <text x="80" y="425" fill="#60a5fa" font-size="11">• 扫描所有文件类型，不限扩展名（.txt/.py/.js/.sh 等全部扫描）</text>
+        <text x="560" y="405" fill="#34d399" font-size="11">• 跨机器调用：Windows Plugin → HTTP → Linux Scan Gateway → KSE</text>
+        <text x="560" y="425" fill="#34d399" font-size="11">• 超时/异常自动 fail-open，不影响 OpenClaw 正常使用</text>
+        <text x="80" y="448" fill="#fbbf24" font-size="11">• 威胁文件副本保存在 kumadb 隔离区，便于审计和溯源</text>
+      </svg>
+    </div>
+
+    <div id="view-exec" style="display:none;">
+      <svg viewBox="0 0 1060 520" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="ae" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/></marker>
+          <marker id="ae-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="ae-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+        </defs>
+        <text x="530" y="35" text-anchor="middle" fill="#60a5fa" font-size="16" font-weight="700">数据流②：OpenClaw exec 工具拦截（三类检测）</text>
+
+        <rect x="40" y="65" width="150" height="70" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="115" y="93" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">AI Agent</text>
+        <text x="115" y="113" text-anchor="middle" fill="#64748b" font-size="11">调用 exec 工具</text>
+        <text x="115" y="129" text-anchor="middle" fill="#64748b" font-size="10">command + workdir</text>
+
+        <rect x="240" y="65" width="170" height="70" rx="8" fill="#1e3a5f" stroke="#60a5fa" stroke-width="2"/>
+        <text x="325" y="93" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="700">KSE Plugin</text>
+        <text x="325" y="113" text-anchor="middle" fill="#64748b" font-size="11">解析 command</text>
+        <text x="325" y="129" text-anchor="middle" fill="#34d399" font-size="10">识别三类目标</text>
+
+        <rect x="40" y="170" width="300" height="130" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="190" y="198" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">A. 脚本文件检测</text>
+        <text x="190" y="222" text-anchor="middle" fill="#94a3b8" font-size="11">正则提取 command 中的脚本路径</text>
+        <text x="190" y="242" text-anchor="middle" fill="#64748b" font-size="10">.py .js .ts .sh .bat .ps1 .exe ...</text>
+        <text x="190" y="262" text-anchor="middle" fill="#64748b" font-size="10">读取本地文件 → /scan/file 扫描</text>
+        <text x="190" y="285" text-anchor="middle" fill="#fbbf24" font-size="10">示例: python C:\temp\test.py</text>
+
+        <rect x="380" y="170" width="300" height="130" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="530" y="198" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">B. 模型文件检测</text>
+        <text x="530" y="222" text-anchor="middle" fill="#94a3b8" font-size="11">正则提取 command 中的模型路径</text>
+        <text x="530" y="242" text-anchor="middle" fill="#64748b" font-size="10">.gguf .safetensors .bin .pt .onnx ...</text>
+        <text x="530" y="262" text-anchor="middle" fill="#64748b" font-size="10">读取本地文件 → /scan/file 扫描</text>
+        <text x="530" y="285" text-anchor="middle" fill="#fbbf24" font-size="10">示例: ollama run /path/model.gguf</text>
+
+        <rect x="720" y="170" width="300" height="130" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="870" y="198" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">C. Skill 下载检测</text>
+        <text x="870" y="222" text-anchor="middle" fill="#94a3b8" font-size="11">检测命令中的下载关键词</text>
+        <text x="870" y="242" text-anchor="middle" fill="#64748b" font-size="10">git clone / pip install / npm install</text>
+        <text x="870" y="262" text-anchor="middle" fill="#64748b" font-size="10">curl / wget / Invoke-WebRequest</text>
+        <text x="870" y="285" text-anchor="middle" fill="#fbbf24" font-size="10">+ skill/plugin/openclaw 关键词</text>
+
+        <line x1="190" y1="135" x2="190" y2="170" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#ae)"/>
+        <line x1="325" y1="135" x2="530" y2="170" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#ae)"/>
+        <line x1="410" y1="135" x2="870" y2="170" stroke="#60a5fa" stroke-width="1.5" marker-end="url(#ae)"/>
+
+        <rect x="40" y="335" width="480" height="80" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="280" y="363" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">检出威胁 → 阻止执行</text>
+        <text x="280" y="388" text-anchor="middle" fill="#fca5a5" font-size="12">返回 { block: true, blockReason: "[Kaspersky] 检出威胁..." }</text>
+        <text x="280" y="408" text-anchor="middle" fill="#64748b" font-size="10">脚本/模型不执行，Skill 不下载</text>
+
+        <rect x="560" y="335" width="470" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="795" y="363" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">扫描通过 → 正常执行</text>
+        <text x="795" y="388" text-anchor="middle" fill="#86efac" font-size="12">返回 {} (不阻止)</text>
+        <text x="795" y="408" text-anchor="middle" fill="#64748b" font-size="10">exec 工具正常执行命令</text>
+
+        <rect x="40" y="440" width="990" height="65" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="535" y="465" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">注意：exec 拦截扫描的是 Windows 本地文件（脚本/模型），通过 /scan/upload 上传内容扫描</text>
+        <text x="535" y="488" text-anchor="middle" fill="#64748b" font-size="10">Skill 下载命令扫描的是命令文本内容本身，不是下载后的文件（文件下载后由 File Watcher 兜底）</text>
+      </svg>
+    </div>
+
+    <div id="view-ollama" style="display:none;">
+      <svg viewBox="0 0 1060 460" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="ao" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#fbbf24"/></marker>
+          <marker id="ao-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="ao-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+        </defs>
+        <text x="530" y="35" text-anchor="middle" fill="#fbbf24" font-size="16" font-weight="700">数据流③：Ollama 模型下载监控与自动隔离</text>
+
+        <rect x="40" y="65" width="180" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="130" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">管理员手动操作</text>
+        <text x="130" y="113" text-anchor="middle" fill="#64748b" font-size="11">docker exec ollama</text>
+        <text x="130" y="130" text-anchor="middle" fill="#64748b" font-size="10">ollama pull model-name</text>
+
+        <rect x="270" y="65" width="180" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="360" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">Ollama Docker</text>
+        <text x="360" y="113" text-anchor="middle" fill="#64748b" font-size="11">下载模型文件</text>
+        <text x="360" y="130" text-anchor="middle" fill="#64748b" font-size="10">写入 models/blobs/</text>
+
+        <rect x="500" y="65" width="180" height="75" rx="8" fill="#3f2d1a" stroke="#f59e0b" stroke-width="2"/>
+        <text x="590" y="93" text-anchor="middle" fill="#fcd34d" font-size="13" font-weight="700">ollama-watcher</text>
+        <text x="590" y="113" text-anchor="middle" fill="#64748b" font-size="11">inotifywait 监控</text>
+        <text x="590" y="130" text-anchor="middle" fill="#34d399" font-size="10">✓ close_write 事件</text>
+
+        <rect x="730" y="65" width="150" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="805" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">Scan Gateway</text>
+        <text x="805" y="113" text-anchor="middle" fill="#64748b" font-size="11">/scan/file</text>
+        <text x="805" y="130" text-anchor="middle" fill="#64748b" font-size="10">本地路径扫描</text>
+
+        <rect x="920" y="65" width="110" height="75" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="2"/>
+        <text x="975" y="93" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">KSE</text>
+        <text x="975" y="113" text-anchor="middle" fill="#64748b" font-size="11">扫描引擎</text>
+        <text x="975" y="130" text-anchor="middle" fill="#64748b" font-size="10">返回结果</text>
+
+        <line x1="220" y1="102" x2="270" y2="102" stroke="#34d399" stroke-width="2" marker-end="url(#ao-g)"/>
+        <line x1="450" y1="102" x2="500" y2="102" stroke="#fbbf24" stroke-width="2" marker-end="url(#ao)"/>
+        <text x="475" y="92" text-anchor="middle" fill="#fbbf24" font-size="9">①文件写入</text>
+        <line x1="680" y1="102" x2="730" y2="102" stroke="#fbbf24" stroke-width="2" marker-end="url(#ao)"/>
+        <text x="705" y="92" text-anchor="middle" fill="#fbbf24" font-size="9">②触发扫描</text>
+        <line x1="880" y1="102" x2="920" y2="102" stroke="#34d399" stroke-width="2" marker-end="url(#ao-g)"/>
+
+        <rect x="40" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="100" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">大小过滤</text>
+        <text x="100" y="216" text-anchor="middle" fill="#64748b" font-size="9">&lt;10MB 跳过</text>
+
+        <rect x="190" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="250" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">超时设置</text>
+        <text x="250" y="216" text-anchor="middle" fill="#64748b" font-size="9">600秒 (大模型)</text>
+
+        <rect x="340" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="400" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">日志记录</text>
+        <text x="400" y="216" text-anchor="middle" fill="#64748b" font-size="9">/var/log/ollama-watcher.log</text>
+
+        <rect x="490" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="550" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">systemd</text>
+        <text x="550" y="216" text-anchor="middle" fill="#64748b" font-size="9">开机自启·异常重启</text>
+
+        <rect x="640" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="700" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">fail-open</text>
+        <text x="700" y="216" text-anchor="middle" fill="#64748b" font-size="9">扫描异常不隔离</text>
+
+        <rect x="790" y="175" width="120" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="850" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">零侵入</text>
+        <text x="850" y="216" text-anchor="middle" fill="#64748b" font-size="9">不改 Ollama 代码</text>
+
+        <rect x="940" y="175" width="90" height="50" rx="6" fill="#0f172a" stroke="#334155"/>
+        <text x="985" y="198" text-anchor="middle" fill="#94a3b8" font-size="11">同机</text>
+        <text x="985" y="216" text-anchor="middle" fill="#64748b" font-size="9">kumadb 本地</text>
+
+        <rect x="40" y="255" width="480" height="90" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="280" y="283" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">检出威胁 (DETECT) → 自动隔离</text>
+        <text x="280" y="308" text-anchor="middle" fill="#fca5a5" font-size="12">mv 文件到 /opt/kaspersky/quarantine/</text>
+        <text x="280" y="328" text-anchor="middle" fill="#64748b" font-size="10">命名: {SHA256}_{时间戳}_{原文件名}</text>
+        <text x="280" y="345" text-anchor="middle" fill="#f87171" font-size="10">→ Ollama 加载该模型会失败 (文件已移走)</text>
+
+        <rect x="560" y="255" width="470" height="90" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="795" y="283" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">扫描通过 (CLEAN) → 保留原位</text>
+        <text x="795" y="308" text-anchor="middle" fill="#86efac" font-size="12">文件保留在 models/blobs/ 目录</text>
+        <text x="795" y="328" text-anchor="middle" fill="#64748b" font-size="10">Ollama 可正常加载使用</text>
+        <text x="795" y="345" text-anchor="middle" fill="#34d399" font-size="10">→ 记录"扫描通过"日志</text>
+
+        <rect x="40" y="370" width="990" height="75" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="535" y="395" text-anchor="middle" fill="#94a3b8" font-size="12" font-weight="600">与其他防护的区别</text>
+        <text x="80" y="420" fill="#fbbf24" font-size="11">• Ollama 监控: 事后扫描（文件已写入磁盘），适合无法改代码的封闭应用</text>
+        <text x="80" y="440" fill="#60a5fa" font-size="11">• OpenClaw Plugin: 事前拦截（文件写入前），适合有插件系统的 Agent</text>
+        <text x="560" y="420" fill="#a78bfa" font-size="11">• File Watcher: 事后扫描（定时轮询），覆盖 skills/plugins/npm 安装</text>
+        <text x="560" y="440" fill="#f87171" font-size="11">• 已验证: 12MB EICAR 测试文件被成功检出并自动隔离</text>
+      </svg>
+    </div>
+
+    <div id="view-upload" style="display:none;">
+      <svg viewBox="0 0 1060 440" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="au" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#60a5fa"/></marker>
+          <marker id="au-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="au-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+        </defs>
+        <text x="530" y="35" text-anchor="middle" fill="#60a5fa" font-size="16" font-weight="700">数据流④：Upload Gateway 安全上传扫描</text>
+
+        <rect x="40" y="65" width="160" height="75" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="120" y="93" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">用户浏览器</text>
+        <text x="120" y="113" text-anchor="middle" fill="#64748b" font-size="11">上传页面</text>
+        <text x="120" y="130" text-anchor="middle" fill="#64748b" font-size="10">:8002/index.html</text>
+
+        <rect x="250" y="65" width="170" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="2"/>
+        <text x="335" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="700">Upload Gateway</text>
+        <text x="335" y="113" text-anchor="middle" fill="#64748b" font-size="11">接收文件上传</text>
+        <text x="335" y="130" text-anchor="middle" fill="#64748b" font-size="10">Python + FastAPI</text>
+
+        <rect x="470" y="65" width="170" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="555" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">Scan Gateway</text>
+        <text x="555" y="113" text-anchor="middle" fill="#64748b" font-size="11">/scan/upload</text>
+        <text x="555" y="130" text-anchor="middle" fill="#64748b" font-size="10">转发扫描请求</text>
+
+        <rect x="690" y="65" width="150" height="75" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="2"/>
+        <text x="765" y="93" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">KSE 引擎</text>
+        <text x="765" y="113" text-anchor="middle" fill="#64748b" font-size="11">扫描文件</text>
+        <text x="765" y="130" text-anchor="middle" fill="#64748b" font-size="10">返回 verdict</text>
+
+        <rect x="890" y="65" width="130" height="75" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="955" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">AnythingLLM</text>
+        <text x="955" y="113" text-anchor="middle" fill="#64748b" font-size="11">:3001</text>
+        <text x="955" y="130" text-anchor="middle" fill="#64748b" font-size="10">知识库入库</text>
+
+        <line x1="200" y1="102" x2="250" y2="102" stroke="#60a5fa" stroke-width="2" marker-end="url(#au)"/>
+        <text x="225" y="92" text-anchor="middle" fill="#60a5fa" font-size="9">①上传文件</text>
+        <line x1="420" y1="102" x2="470" y2="102" stroke="#60a5fa" stroke-width="2" marker-end="url(#au)"/>
+        <text x="445" y="92" text-anchor="middle" fill="#60a5fa" font-size="9">②转发扫描</text>
+        <line x1="640" y1="102" x2="690" y2="102" stroke="#34d399" stroke-width="2" marker-end="url(#au-g)"/>
+        <text x="665" y="92" text-anchor="middle" fill="#34d399" font-size="9">③127.0.0.1</text>
+
+        <rect x="40" y="170" width="300" height="90" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="190" y="198" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">检出威胁 → 拒绝上传</text>
+        <text x="190" y="223" text-anchor="middle" fill="#fca5a5" font-size="12">返回错误: 文件包含威胁</text>
+        <text x="190" y="243" text-anchor="middle" fill="#64748b" font-size="10">文件不传入 AnythingLLM</text>
+        <text x="190" y="260" text-anchor="middle" fill="#f87171" font-size="10">→ 威胁文件自动隔离到 quarantine</text>
+
+        <rect x="380" y="170" width="300" height="90" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="530" y="198" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">扫描通过 → 传入知识库</text>
+        <text x="530" y="223" text-anchor="middle" fill="#86efac" font-size="12">两步上传到 AnythingLLM</text>
+        <text x="530" y="243" text-anchor="middle" fill="#64748b" font-size="10">第一步: 上传文档</text>
+        <text x="530" y="260" text-anchor="middle" fill="#34d399" font-size="10">第二步: 接受文档 (可选"只上传到我的文档")</text>
+
+        <rect x="720" y="170" width="300" height="90" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="870" y="198" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">安全特性</text>
+        <text x="870" y="223" text-anchor="middle" fill="#64748b" font-size="11">• add_to_workspace 参数控制范围</text>
+        <text x="870" y="243" text-anchor="middle" fill="#64748b" font-size="10">• SHA256 缓存避免重复扫描</text>
+        <text x="870" y="260" text-anchor="middle" fill="#64748b" font-size="10">• 威胁文件自动隔离+记录</text>
+
+        <rect x="40" y="290" width="990" height="130" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="535" y="318" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">五种防护场景对比</text>
+        <line x1="40" y1="335" x2="1030" y2="335" stroke="#334155" stroke-width="1"/>
+        <text x="120" y="358" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="600">OpenClaw write</text>
+        <text x="120" y="378" text-anchor="middle" fill="#64748b" font-size="10">事前拦截·内存扫描</text>
+        <text x="120" y="398" text-anchor="middle" fill="#34d399" font-size="10">✓ 不落盘</text>
+        <text x="300" y="358" text-anchor="middle" fill="#60a5fa" font-size="11" font-weight="600">OpenClaw exec</text>
+        <text x="300" y="378" text-anchor="middle" fill="#64748b" font-size="10">事前拦截·脚本/模型/Skill</text>
+        <text x="300" y="398" text-anchor="middle" fill="#34d399" font-size="10">✓ 不执行</text>
+        <text x="480" y="358" text-anchor="middle" fill="#fbbf24" font-size="11" font-weight="600">Ollama 监控</text>
+        <text x="480" y="378" text-anchor="middle" fill="#64748b" font-size="10">事后扫描·inotifywait</text>
+        <text x="480" y="398" text-anchor="middle" fill="#f87171" font-size="10">✓ 自动隔离</text>
+        <text x="660" y="358" text-anchor="middle" fill="#86efac" font-size="11" font-weight="600">Upload Gateway</text>
+        <text x="660" y="378" text-anchor="middle" fill="#64748b" font-size="10">上传拦截·Web页面</text>
+        <text x="660" y="398" text-anchor="middle" fill="#34d399" font-size="10">✓ 不入知识库</text>
+        <text x="840" y="358" text-anchor="middle" fill="#a78bfa" font-size="11" font-weight="600">File Watcher</text>
+        <text x="840" y="378" text-anchor="middle" fill="#64748b" font-size="10">事后扫描·定时轮询</text>
+        <text x="840" y="398" text-anchor="middle" fill="#f87171" font-size="10">✓ skills/npm隔离</text>
+        <text x="970" y="358" text-anchor="middle" fill="#94a3b8" font-size="11" font-weight="600">核心</text>
+        <text x="970" y="378" text-anchor="middle" fill="#64748b" font-size="10">KSE + Scan Gateway</text>
+        <text x="970" y="398" text-anchor="middle" fill="#fca5a5" font-size="10">统一扫描引擎</text>
+        <text x="535" y="420" text-anchor="middle" fill="#475569" font-size="10">所有场景共用同一个 KSE 扫描引擎和 Scan Gateway，威胁统一隔离（Linux: /opt/kaspersky/quarantine/ · Windows: .openclaw/quarantine/）</text>
+      </svg>
+    </div>
+
+    <div id="view-watcher" style="display:none;">
+      <svg viewBox="0 0 1060 500" width="100%" style="background:#1e293b;border-radius:12px;border:1px solid #334155;">
+        <defs>
+          <marker id="aw2" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#a78bfa"/></marker>
+          <marker id="aw2-r" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#f87171"/></marker>
+          <marker id="aw2-g" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#34d399"/></marker>
+        </defs>
+        <text x="530" y="35" text-anchor="middle" fill="#a78bfa" font-size="16" font-weight="700">数据流⑤：Windows 文件监控（skills/plugins/npm 安装扫描）</text>
+
+        <rect x="40" y="65" width="170" height="80" rx="8" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1.5"/>
+        <text x="125" y="93" text-anchor="middle" fill="#93c5fd" font-size="13" font-weight="600">触发源</text>
+        <text x="125" y="113" text-anchor="middle" fill="#64748b" font-size="11">openclaw skills install</text>
+        <text x="125" y="130" text-anchor="middle" fill="#64748b" font-size="10">npm install / 手动复制</text>
+        <text x="125" y="145" text-anchor="middle" fill="#64748b" font-size="10">→ 文件写入 workspace/</text>
+
+        <rect x="250" y="65" width="180" height="80" rx="8" fill="#2d1f4e" stroke="#a78bfa" stroke-width="2"/>
+        <text x="340" y="93" text-anchor="middle" fill="#c4b5fd" font-size="13" font-weight="700">KSE File Watcher</text>
+        <text x="340" y="113" text-anchor="middle" fill="#64748b" font-size="11">计划任务·定时轮询 5s</text>
+        <text x="340" y="130" text-anchor="middle" fill="#64748b" font-size="10">对比文件列表·发现新文件</text>
+        <text x="340" y="145" text-anchor="middle" fill="#34d399" font-size="10">✓ 已验证 tmux skill 扫描</text>
+
+        <rect x="470" y="65" width="170" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="555" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">curl.exe 上传</text>
+        <text x="555" y="113" text-anchor="middle" fill="#64748b" font-size="11">POST /scan/upload</text>
+        <text x="555" y="130" text-anchor="middle" fill="#64748b" font-size="10">multipart/form-data</text>
+        <text x="555" y="145" text-anchor="middle" fill="#64748b" font-size="10">兼容 PowerShell 5.1</text>
+
+        <rect x="680" y="65" width="160" height="80" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="760" y="93" text-anchor="middle" fill="#86efac" font-size="13" font-weight="600">Scan Gateway</text>
+        <text x="760" y="113" text-anchor="middle" fill="#64748b" font-size="11">:8000 接收上传</text>
+        <text x="760" y="130" text-anchor="middle" fill="#64748b" font-size="10">保存到 scanqueue</text>
+        <text x="760" y="145" text-anchor="middle" fill="#64748b" font-size="10">调用 KSE 扫描</text>
+
+        <rect x="880" y="65" width="140" height="80" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="2"/>
+        <text x="950" y="93" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">KSE 引擎</text>
+        <text x="950" y="113" text-anchor="middle" fill="#64748b" font-size="11">扫描文件内容</text>
+        <text x="950" y="130" text-anchor="middle" fill="#64748b" font-size="10">返回 verdict</text>
+        <text x="950" y="145" text-anchor="middle" fill="#64748b" font-size="10">DETECT / CLEAN</text>
+
+        <line x1="210" y1="105" x2="250" y2="105" stroke="#a78bfa" stroke-width="2" marker-end="url(#aw2)"/>
+        <text x="230" y="95" text-anchor="middle" fill="#a78bfa" font-size="9">①文件落盘</text>
+        <line x1="430" y1="105" x2="470" y2="105" stroke="#a78bfa" stroke-width="2" marker-end="url(#aw2)"/>
+        <text x="450" y="95" text-anchor="middle" fill="#a78bfa" font-size="9">②检测到新文件</text>
+        <line x1="640" y1="105" x2="680" y2="105" stroke="#a78bfa" stroke-width="2" marker-end="url(#aw2)"/>
+        <text x="660" y="95" text-anchor="middle" fill="#a78bfa" font-size="9">③上传扫描</text>
+        <line x1="840" y1="105" x2="880" y2="105" stroke="#34d399" stroke-width="2" marker-end="url(#aw2-g)"/>
+        <text x="860" y="95" text-anchor="middle" fill="#34d399" font-size="9">④127.0.0.1</text>
+
+        <path d="M 950 145 Q 950 180 555 180 Q 340 180 340 145" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#aw2-g)"/>
+        <text x="555" y="198" text-anchor="middle" fill="#34d399" font-size="10">⑤返回扫描结果 (DETECT/CLEAN)</text>
+
+        <rect x="40" y="220" width="480" height="100" rx="8" fill="#3f1d1d" stroke="#ef4444" stroke-width="1.5"/>
+        <text x="280" y="250" text-anchor="middle" fill="#fca5a5" font-size="14" font-weight="700">检出威胁 (DETECT) → 自动隔离</text>
+        <text x="280" y="275" text-anchor="middle" fill="#fca5a5" font-size="12">Watcher 收到 DETECT → Move-Item 到隔离区</text>
+        <text x="280" y="298" text-anchor="middle" fill="#64748b" font-size="10">隔离路径: C:\Users\...\.openclaw\quarantine\{SHA256}_{文件名}</text>
+        <text x="280" y="316" text-anchor="middle" fill="#f87171" font-size="10">→ skill/plugin 文件被移走，OpenClaw 加载失败</text>
+
+        <rect x="560" y="220" width="460" height="100" rx="8" fill="#1a2e1a" stroke="#22c55e" stroke-width="1.5"/>
+        <text x="790" y="250" text-anchor="middle" fill="#86efac" font-size="14" font-weight="700">扫描通过 (CLEAN) → 保留原位</text>
+        <text x="790" y="275" text-anchor="middle" fill="#86efac" font-size="12">Watcher 收到 CLEAN → 不操作</text>
+        <text x="790" y="298" text-anchor="middle" fill="#64748b" font-size="10">文件保留在 workspace/plugins/npm 目录</text>
+        <text x="790" y="316" text-anchor="middle" fill="#34d399" font-size="10">→ OpenClaw 可正常加载使用 skill/plugin</text>
+
+        <rect x="40" y="345" width="990" height="140" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+        <text x="535" y="373" text-anchor="middle" fill="#94a3b8" font-size="13" font-weight="600">关键特点与设计取舍</text>
+        <text x="80" y="400" fill="#a78bfa" font-size="11">• 定时轮询(5s)而非 FileSystemWatcher: Windows 上 FSW 子目录监控不可靠，轮询 100% 稳定</text>
+        <text x="80" y="420" fill="#a78bfa" font-size="11">• curl.exe 上传而非 Invoke-RestMethod -Form: 兼容 PowerShell 5.1（-Form 是 6.1+ 才有）</text>
+        <text x="80" y="440" fill="#a78bfa" font-size="11">• 纯英文注释+UTF-8 BOM: 避免 PowerShell 5.1 中文乱码导致脚本解析失败</text>
+        <text x="560" y="400" fill="#34d399" font-size="11">• 排除目录: \out\ \state\ \.clawhub\ — 不扫 agent 输出文件和元数据，减少噪音</text>
+        <text x="560" y="420" fill="#34d399" font-size="11">• 超100MB跳过: 大文件不扫描，避免影响性能（模型文件由 Ollama 监控覆盖）</text>
+        <text x="560" y="440" fill="#fbbf24" font-size="11">• 与 Plugin 互补: Plugin 是事前拦截(write/exec)，Watcher 是事后兜底(skills install/npm install)</text>
+        <text x="535" y="472" text-anchor="middle" fill="#f87171" font-size="11">已验证: EICAR 测试文件被检出并隔离 · tmux skill 安装文件全部扫描通过(CLEAN)</text>
+      </svg>
+    </div>
+
+    <div style="margin-top:16px;padding:14px;background:rgba(167,139,250,0.08);border:1px solid #a78bfa;border-radius:8px;">
+      <p style="margin:0;font-size:12px;color:#c4b5fd;line-height:1.7;">
+        <strong style="color:#a78bfa;">说明：</strong>
+        五种防护场景共用同一个 KSE 扫描引擎（kumadb:8443）和 Scan Gateway（:8000）。OpenClaw Plugin 为事前拦截（工具执行前，不落盘），Ollama 监控和 File Watcher 为事后扫描（文件写入后，自动隔离），Upload Gateway 为上传拦截（Web 页面上传时扫描）。威胁文件隔离在两个位置：Linux 端 <code style="background:#0f172a;padding:2px 6px;border-radius:4px;color:#fbbf24;">/opt/kaspersky/quarantine/</code>，Windows 端 <code style="background:#0f172a;padding:2px 6px;border-radius:4px;color:#fbbf24;">.openclaw/quarantine/</code>。
+      </p>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    try {
+      function showView(name) {
+        var views = ['topology','write','exec','ollama','upload','watcher'];
+        for (var i=0;i<views.length;i++){
+          var el = document.getElementById('view-'+views[i]);
+          var btn = document.getElementById('btn-'+views[i]);
+          if(el) el.style.display = (views[i]===name)?'block':'none';
+          if(btn){
+            btn.style.background = (views[i]===name)?'#3b82f6':'#334155';
+            btn.style.color = (views[i]===name)?'#fff':'#cbd5e1';
+          }
+        }
+      }
+      window.showView = showView;
+    } catch(e){ console.error(e); }
+  })();
+  </script>
+</div>
+</html>
