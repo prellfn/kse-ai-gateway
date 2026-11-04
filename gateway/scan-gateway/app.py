@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import time
@@ -78,7 +79,7 @@ def audit(event: str, **fields: Any) -> None:
     try:
         AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
         with open(AUDIT_LOG, "a", encoding="utf-8") as f:
-            f.write(__import__("json").dumps(record, ensure_ascii=False) + "\n")
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
     except Exception:  # pragma: no cover
         pass
 

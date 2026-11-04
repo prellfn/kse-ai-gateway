@@ -34,6 +34,7 @@ jobs:
         with:
           scandir: ./scripts
           additional_files: ./watchers/ollama-watcher.sh
+          severity: error
 
   node:
     runs-on: ubuntu-latest
@@ -54,8 +55,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: 检查是否误提交密钥
         run: |
-          if grep -rInE "(gho_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|BEGIN (RSA|OPENSSH) PRIVATE KEY)" \
-               --exclude-dir=.git . ; then
-            echo "::error::疑似提交了密钥"; exit 1
+          if grep -rInE "(gho_[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|BEGIN (RSA|OPENSSH) PRIVATE KEY)" --exclude-dir=.git . ; then
+            echo "::error::疑似提交了密钥"
+            exit 1
           fi
           echo "未发现硬编码密钥"
