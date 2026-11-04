@@ -1,4 +1,4 @@
-"""AnythingLLM 安全上传网关 — 先扫描, 后入库.
+"""AnythingLLM 安全上传网关 — 先扫描, 后入库 (零依赖标准库实现).
 
 数据流:
     浏览器上传 -> 落盘扫描队列 -> Scan Gateway 扫描 -> CLEAN 才转发到 AnythingLLM
@@ -9,14 +9,18 @@
 """
 from __future__ import annotations
 
+import json
 import os
+import ssl
+import sys
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 from typing import Any
 
-import httpx
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common.kserver import App, HTTPException, HTMLResponse, JSONResponse, Request, run  # noqa: E402
 
 SCAN_GATEWAY: str = os.getenv("SCAN_GATEWAY", "http://127.0.0.1:8000").rstrip("/")
 ANYTHINGLLM_URL: str = os.getenv("ANYTHINGLLM_URL", "http://127.0.0.1:3001").rstrip("/")
@@ -33,45 +37,93 @@ ALLOWED_EXT: set[str] = {
     if e.strip()
 }
 MAX_UPLOAD_SIZE: int = int(os.getenv("MAX_UPLOAD_SIZE", str(100 * 1024 * 1024)))
+# 无 AnythingLLM 时允许仅做扫描验证 (不转发入库), 用于新环境试跑
+FORWARD_ENABLED: bool = os.getenv("FORWARD_ENABLED", "true").lower() in ("1", "true", "yes")
 
-app = FastAPI(title="AnythingLLM 安全上传门卫", version="1.0.0")
-
-
-def anythingllm_headers() -> dict[str, str]:
-    return {"Authorization": f"Bearer {ANYTHINGLLM_API_KEY}"}
+app = App(title="AnythingLLM 安全上传门卫", version="1.2.0")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
+def _post_json(url: str, payload: dict, timeout: int = 600, headers: dict | None = None) -> tuple[int, Any]:
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=body, headers=headers or {}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            return resp.status, json.loads(raw.decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(raw or "{}")
+        except json.JSONDecodeError:
+            return exc.code, {"raw": raw[:300]}
+    except urllib.error.URLError as exc:
+        raise HTTPException(502, f"无法连接 {url}: {exc.reason}") from exc
+
+
+def _post_multipart(url: str, field: str, filename: str, content: bytes, content_type: str, timeout: int = 600) -> tuple[int, Any]:
+    boundary = "----KSEBoundary" + str(int(time.time() * 1000))
+    head = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
+        f"Content-Type: {content_type}\r\n\r\n"
+    ).encode("utf-8")
+    body = head + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read()
+            return resp.status, json.loads(raw.decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            return exc.code, json.loads(raw or "{}")
+        except json.JSONDecodeError:
+            return exc.code, {"raw": raw[:300]}
+    except urllib.error.URLError as exc:
+        raise HTTPException(502, f"无法连接 {url}: {exc.reason}") from exc
+
+
+@app.get("/")
+def index(req: Request) -> HTMLResponse:
     return HTMLResponse((TEMPLATE_DIR / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/health")
-async def health() -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "scan_gateway": SCAN_GATEWAY,
-        "anythingllm": ANYTHINGLLM_URL,
-        "workspace": WORKSPACE_SLUG or "(未配置)",
-    }
+def health(req: Request) -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "ok",
+            "scan_gateway": SCAN_GATEWAY,
+            "anythingllm": ANYTHINGLLM_URL if FORWARD_ENABLED else "(未启用转发)",
+            "workspace": WORKSPACE_SLUG or "(未配置)",
+            "forward_enabled": FORWARD_ENABLED,
+        }
+    )
 
 
 @app.post("/upload")
-async def safe_upload(
-    file: UploadFile = File(...),
-    add_to_workspace: bool = Form(True),
-) -> dict[str, Any]:
-    original_name = file.filename or "unnamed"
+def upload(req: Request) -> JSONResponse:
+    files = req.files
+    if "file" not in files:
+        raise HTTPException(400, "缺少上传文件 (字段名: file)")
+    upload_file = files["file"]
+    original_name = upload_file.filename or "unnamed"
     ext = Path(original_name).suffix.lower()
-
     if ext and ext not in ALLOWED_EXT:
-        raise HTTPException(400, f"不支持的文件类型: {ext}（允许: {', '.join(sorted(ALLOWED_EXT))}）")
+        raise HTTPException(400, f"不支持的文件类型: {ext}")
 
-    contents = await file.read()
+    contents = upload_file.file
     if not contents:
         raise HTTPException(400, "空文件")
     if len(contents) > MAX_UPLOAD_SIZE:
         raise HTTPException(413, f"文件超过大小上限 ({MAX_UPLOAD_SIZE} bytes)")
+
+    add_to_workspace = str(req.form.get("add_to_workspace", "true")).lower() in ("1", "true", "yes")
 
     SCAN_QUEUE.mkdir(parents=True, exist_ok=True)
     safe_filename = f"{int(time.time())}_{Path(original_name).name}"
@@ -80,14 +132,12 @@ async def safe_upload(
         f.write(contents)
 
     # 1) 扫描
-    async with httpx.AsyncClient(timeout=600) as client:
-        scan_resp = await client.post(
-            f"{SCAN_GATEWAY}/scan/file",
-            json={"file_path": str(file_path), "timeout": 300},
-        )
-    if scan_resp.status_code != 200:
-        raise HTTPException(502, f"扫描网关异常 ({scan_resp.status_code}): {scan_resp.text[:300]}")
-    scan_result = scan_resp.json()
+    status, scan_result = _post_json(
+        f"{SCAN_GATEWAY}/scan/file",
+        {"file_path": str(file_path), "timeout": 300},
+    )
+    if status != 200:
+        raise HTTPException(502, f"扫描网关异常 ({status}): {scan_result}")
 
     verdict = scan_result.get("verdict")
     if verdict == "DETECT":
@@ -98,47 +148,56 @@ async def safe_upload(
     if verdict != "CLEAN":
         raise HTTPException(500, f"扫描失败({verdict})，文件未入库")
 
-    # 2) CLEAN -> 转发到 AnythingLLM
-    headers = anythingllm_headers()
-    async with httpx.AsyncClient(timeout=600) as client:
-        upload_resp = await client.post(
-            f"{ANYTHINGLLM_URL}/api/v1/document/upload",
-            files={"file": (original_name, contents, file.content_type or "application/octet-stream")},
-            headers=headers,
-        )
-    if upload_resp.status_code != 200:
-        raise HTTPException(upload_resp.status_code, f"上传到文档存储失败: {upload_resp.text[:300]}")
-
-    upload_data = upload_resp.json()
-    documents = upload_data.get("documents", [])
-    if not documents:
-        raise HTTPException(500, "文档存储未返回文档信息")
-
-    doc_location = documents[0]["location"]
+    # 2) CLEAN -> 转发 AnythingLLM
     added_to_workspace = False
-    if add_to_workspace:
-        if not WORKSPACE_SLUG:
-            raise HTTPException(500, "未配置 WORKSPACE_SLOG，无法添加到工作区")
-        async with httpx.AsyncClient(timeout=600) as client:
-            embed_resp = await client.post(
+    if FORWARD_ENABLED:
+        headers = {"Authorization": f"Bearer {ANYTHINGLLM_API_KEY}"}
+        status, upload_data = _post_multipart(
+            f"{ANYTHINGLLM_URL}/api/v1/document/upload",
+            "file",
+            original_name,
+            contents,
+            upload_file.content_type or "application/octet-stream",
+        )
+        if status != 200:
+            raise HTTPException(status, f"上传到文档存储失败: {str(upload_data)[:300]}")
+
+        documents = upload_data.get("documents", [])
+        if not documents:
+            raise HTTPException(500, "文档存储未返回文档信息")
+
+        doc_location = documents[0]["location"]
+        if add_to_workspace:
+            if not WORKSPACE_SLUG:
+                raise HTTPException(500, "未配置 WORKSPACE_SLUG，无法添加到工作区")
+            status, embed = _post_json(
                 f"{ANYTHINGLLM_URL}/api/v1/workspace/{WORKSPACE_SLUG}/update-embeddings",
+                {"adds": [doc_location]},
                 headers={**headers, "Content-Type": "application/json"},
-                json={"adds": [doc_location]},
             )
-        if embed_resp.status_code != 200:
-            raise HTTPException(embed_resp.status_code, f"添加到工作区失败: {embed_resp.text[:300]}")
-        added_to_workspace = True
+            if status != 200:
+                raise HTTPException(status, f"添加到工作区失败: {str(embed)[:300]}")
+            added_to_workspace = True
+    else:
+        # 未启用转发: 仅验证扫描链路, 清理临时文件
+        file_path.unlink(missing_ok=True)
 
-    # 3) 清理扫描队列中的临时文件 (威胁文件已由 Scan Gateway 隔离)
-    file_path.unlink(missing_ok=True)
+    msg = f"文件 {original_name} 已通过安全扫描"
+    if FORWARD_ENABLED:
+        msg += "并上传到我的文档"
+        if added_to_workspace:
+            msg += "，并添加到工作区"
+    return JSONResponse(
+        {
+            "status": "success",
+            "message": msg,
+            "sha256": scan_result.get("sha256"),
+            "detection_name": "",
+            "added_to_workspace": added_to_workspace,
+            "forwarded": FORWARD_ENABLED,
+        }
+    )
 
-    msg = f"文件 {original_name} 已通过安全扫描并上传到我的文档"
-    if added_to_workspace:
-        msg += "，并添加到工作区"
-    return {
-        "status": "success",
-        "message": msg,
-        "sha256": scan_result.get("sha256"),
-        "detection_name": "",
-        "added_to_workspace": added_to_workspace,
-    }
+
+if __name__ == "__main__":
+    run(app, os.getenv("LISTEN_HOST", "0.0.0.0"), int(os.getenv("LISTEN_PORT", "8002")))

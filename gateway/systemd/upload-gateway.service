@@ -8,9 +8,11 @@ Type=simple
 User=root
 WorkingDirectory=/opt/ai-stack/upload-gateway
 EnvironmentFile=-/opt/ai-stack/upload-gateway/.env
-ExecStart=/opt/ai-stack/venv/bin/uvicorn app:app --host 0.0.0.0 --port 8002
+ExecStart=/usr/bin/python3 app.py
 Restart=always
 RestartSec=5
+StandardOutput=append:/var/log/kse-ai-stack/upload-gateway.log
+StandardError=append:/var/log/kse-ai-stack/upload-gateway.log
 
 [Install]
 WantedBy=multi-user.target

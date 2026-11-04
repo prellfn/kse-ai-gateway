@@ -1,5 +1,11 @@
-fastapi>=0.110
-uvicorn[standard]>=0.27
-httpx>=0.26
-python-multipart>=0.0.9
-pydantic>=2.5
+# kse-ai-gateway — 零第三方依赖
+#
+# 所有网关服务 (scan-gateway / upload-gateway / quarantine-console / mcp-server)
+# 均只使用 Python 3.9+ 标准库实现, 无需 pip install。
+#
+# 原因: KSE 所在的内网环境通常离线, 无法访问 pypi;
+#       零依赖保证在任何离线环境都能直接部署。
+#
+# 可选增强 (非必需):
+#   如需 mTLS / 连接池等高级特性, 可自行安装 httpx:
+#     pip install httpx

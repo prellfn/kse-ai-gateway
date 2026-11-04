@@ -1,11 +1,11 @@
-"""隔离区 Web 复核台 — 人工复核被 KSE 隔离的文件.
+"""隔离区 Web 复核台 — 人工复核被 KSE 隔离的文件 (零依赖标准库实现).
 
 功能:
   - 列出隔离区文件 (读取 Scan Gateway 写入的 .meta.json sidecar)
   - 查看威胁名称、SHA-256、原始路径、大小、时间
   - 重新扫描 (验证误报)
   - 恢复到原始路径 (人工确认安全后)
-  - 永久删除
+  - 永久删除 / 标记结论
   - 查看网关审计流水与威胁统计
 
 端口: 8004
@@ -16,27 +16,26 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import sys
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import httpx
-from fastapi import FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common.kserver import App, HTTPException, HTMLResponse, JSONResponse, Request, run  # noqa: E402
 
 SCAN_GATEWAY: str = os.getenv("SCAN_GATEWAY", "http://127.0.0.1:8000").rstrip("/")
 QUARANTINE: Path = Path(os.getenv("QUARANTINE", "/opt/kaspersky/quarantine"))
 AUDIT_LOG: Path = Path(os.getenv("AUDIT_LOG", "/opt/ai-stack/scan-gateway/logs/audit.jsonl"))
 TEMPLATE_DIR: Path = Path(os.getenv("TEMPLATE_DIR", "templates"))
 MAX_AUDIT_LINES: int = int(os.getenv("MAX_AUDIT_LINES", "2000"))
-RESTORE_MAX_AGE_DAYS: int = int(os.getenv("RESTORE_MAX_AGE_DAYS", "30"))
 
-app = FastAPI(title="KSE 隔离区复核台", version="1.0.0")
+app = App(title="KSE 隔离区复核台", version="1.2.0")
 
 
-# --------------------------------------------------------------------------
-# 工具
-# --------------------------------------------------------------------------
 def utcnow() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -46,7 +45,6 @@ def _meta_path(item: Path) -> Path:
 
 
 def _safe_name(name: str) -> str:
-    """防止路径穿越: 只允许纯文件名."""
     if "/" in name or "\\" in name or ".." in name or not name:
         raise HTTPException(400, f"非法文件名: {name}")
     return name
@@ -59,7 +57,6 @@ def _load_meta(item: Path) -> dict[str, Any]:
             return json.loads(meta_path.read_text(encoding="utf-8"))
         except Exception:
             pass
-    # 无 sidecar 时从文件名推断: {sha256}_{时间戳}_{原名}
     parts = item.name.split("_", 2)
     return {
         "quarantine_id": item.name,
@@ -87,7 +84,6 @@ def _list_items() -> list[dict[str, Any]]:
         meta["mtime"] = datetime.fromtimestamp(entry.stat().st_mtime, timezone.utc).isoformat(
             timespec="seconds"
         )
-        meta["exists"] = True
         items.append(meta)
     return items
 
@@ -110,88 +106,88 @@ def _audit(event: str, **fields: Any) -> None:
         pass
 
 
-# --------------------------------------------------------------------------
-# 页面
-# --------------------------------------------------------------------------
-@app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
+def _post_scan(file_path: str, timeout: int = 300) -> dict:
+    body = json.dumps({"file_path": file_path, "timeout": timeout}).encode("utf-8")
+    req = urllib.request.Request(
+        f"{SCAN_GATEWAY}/scan/file",
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout + 60) as resp:
+            return json.loads(resp.read().decode("utf-8", "replace") or "{}")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read().decode("utf-8", "replace")
+        try:
+            detail = json.loads(raw).get("detail", raw)
+        except json.JSONDecodeError:
+            detail = raw
+        raise HTTPException(exc.code, f"Scan Gateway 返回 {exc.code}: {str(detail)[:300]}") from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(502, f"无法连接 Scan Gateway: {exc.reason}") from exc
+
+
+@app.get("/")
+def index(req: Request) -> HTMLResponse:
     return HTMLResponse((TEMPLATE_DIR / "index.html").read_text(encoding="utf-8"))
 
 
 @app.get("/health")
-async def health() -> dict[str, Any]:
-    return {
-        "status": "ok",
-        "scan_gateway": SCAN_GATEWAY,
-        "quarantine": str(QUARANTINE),
-        "items": len(_list_items()),
-    }
+def health(req: Request) -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "ok",
+            "scan_gateway": SCAN_GATEWAY,
+            "quarantine": str(QUARANTINE),
+            "items": len(_list_items()),
+        }
+    )
 
 
-# --------------------------------------------------------------------------
-# API
-# --------------------------------------------------------------------------
 @app.get("/api/quarantine")
-async def list_quarantine(
-    status: str | None = Query(None, description="按状态过滤: pending_review / restored / deleted / false_positive"),
-    q: str | None = Query(None, description="按文件名或威胁名称模糊搜索"),
-) -> dict[str, Any]:
+def list_quarantine(req: Request) -> JSONResponse:
     items = _list_items()
+    status = req.q("status")
+    keyword = (req.q("q") or "").lower()
     if status:
         items = [i for i in items if i.get("status") == status]
-    if q:
-        needle = q.lower()
+    if keyword:
         items = [
             i
             for i in items
-            if needle in i.get("original_name", "").lower()
-            or needle in i.get("detection_name", "").lower()
-            or needle in i.get("sha256", "").lower()
+            if keyword in i.get("original_name", "").lower()
+            or keyword in i.get("detection_name", "").lower()
+            or keyword in i.get("sha256", "").lower()
         ]
-    return {"total": len(items), "items": items}
+    return JSONResponse({"total": len(items), "items": items})
 
 
 @app.get("/api/quarantine/{quarantine_id}")
-async def get_item(quarantine_id: str) -> dict[str, Any]:
-    path = _find_item(quarantine_id)
+def get_item(req: Request) -> JSONResponse:
+    path = _find_item(req.params["quarantine_id"])
     meta = _load_meta(path)
-    meta["mtime"] = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(
-        timespec="seconds"
-    )
-    return meta
+    meta["mtime"] = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    return JSONResponse(meta)
 
 
 @app.post("/api/quarantine/{quarantine_id}/rescan")
-async def rescan(quarantine_id: str) -> dict[str, Any]:
-    """重新扫描隔离文件, 用于验证误报."""
-    path = _find_item(quarantine_id)
-    try:
-        async with httpx.AsyncClient(timeout=600) as client:
-            resp = await client.post(
-                f"{SCAN_GATEWAY}/scan/file",
-                json={"file_path": str(path), "timeout": 300},
-            )
-    except httpx.HTTPError as exc:
-        raise HTTPException(502, f"无法连接 Scan Gateway: {exc}") from exc
-    if resp.status_code >= 400:
-        raise HTTPException(resp.status_code, f"Scan Gateway 返回 {resp.status_code}: {resp.text[:300]}")
-    result = resp.json()
-    _audit("quarantine_rescan", quarantine_id=quarantine_id, verdict=result.get("verdict"))
-    return result
+def rescan(req: Request) -> JSONResponse:
+    path = _find_item(req.params["quarantine_id"])
+    result = _post_scan(str(path))
+    _audit("quarantine_rescan", quarantine_id=path.name, verdict=result.get("verdict"))
+    return JSONResponse(result)
 
 
 @app.post("/api/quarantine/{quarantine_id}/restore")
-async def restore(quarantine_id: str, target_path: str | None = Query(None)) -> dict[str, Any]:
-    """恢复到原始路径 (或指定路径). 仅在人工确认安全后调用."""
-    path = _find_item(quarantine_id)
+def restore(req: Request) -> JSONResponse:
+    path = _find_item(req.params["quarantine_id"])
     meta = _load_meta(path)
-
-    dest_str = target_path or meta.get("original_path") or ""
+    dest_str = req.q("target_path") or meta.get("original_path") or ""
     if not dest_str:
-        raise HTTPException(400, "缺少原始路径，请通过 target_path 指定恢复目标")
+        raise HTTPException(400, "缺少原始路径, 请通过 target_path 指定恢复目标")
 
     dest = Path(dest_str).expanduser()
-    # 允许恢复到任意绝对路径, 但拒绝相对路径与路径穿越
     if not dest.is_absolute():
         raise HTTPException(400, "恢复目标必须是绝对路径")
     if ".." in dest.parts:
@@ -203,47 +199,44 @@ async def restore(quarantine_id: str, target_path: str | None = Query(None)) -> 
     except OSError as exc:
         raise HTTPException(500, f"恢复失败: {exc}") from exc
 
-    meta_path = _meta_path(path)
-    if meta_path.is_file():
-        meta_path.unlink(missing_ok=True)
-
-    _audit("quarantine_restored", quarantine_id=quarantine_id, restored_to=str(dest))
-    return {"status": "restored", "quarantine_id": quarantine_id, "restored_to": str(dest)}
+    _meta_path(path).unlink(missing_ok=True)
+    _audit("quarantine_restored", quarantine_id=path.name, restored_to=str(dest))
+    return JSONResponse({"status": "restored", "quarantine_id": path.name, "restored_to": str(dest)})
 
 
 @app.post("/api/quarantine/{quarantine_id}/mark")
-async def mark(quarantine_id: str, status: str = Query("false_positive")) -> dict[str, Any]:
-    """标记复核结论: false_positive / confirmed_threat / pending_review"""
+def mark(req: Request) -> JSONResponse:
+    status = req.q("status", "false_positive")
     if status not in ("false_positive", "confirmed_threat", "pending_review"):
         raise HTTPException(400, f"非法状态: {status}")
-    path = _find_item(quarantine_id)
+    path = _find_item(req.params["quarantine_id"])
     meta = _load_meta(path)
     meta["status"] = status
     meta["reviewed_at"] = utcnow()
     _meta_path(path).write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
-    _audit("quarantine_marked", quarantine_id=quarantine_id, status=status)
-    return meta
+    _audit("quarantine_marked", quarantine_id=path.name, status=status)
+    return JSONResponse(meta)
 
 
 @app.delete("/api/quarantine/{quarantine_id}")
-async def delete(quarantine_id: str) -> dict[str, Any]:
-    """永久删除隔离文件."""
-    path = _find_item(quarantine_id)
+def delete(req: Request) -> JSONResponse:
+    path = _find_item(req.params["quarantine_id"])
     size = path.stat().st_size
     try:
         path.unlink()
     except OSError as exc:
         raise HTTPException(500, f"删除失败: {exc}") from exc
     _meta_path(path).unlink(missing_ok=True)
-    _audit("quarantine_deleted", quarantine_id=quarantine_id, size=size)
-    return {"status": "deleted", "quarantine_id": quarantine_id, "size": size}
+    _audit("quarantine_deleted", quarantine_id=path.name, size=size)
+    return JSONResponse({"status": "deleted", "quarantine_id": path.name, "size": size})
 
 
 @app.get("/api/audit")
-async def audit(limit: int = Query(100, ge=1, le=5000)) -> dict[str, Any]:
-    """网关审计流水 (JSON Lines 尾部)."""
+def audit(req: Request) -> JSONResponse:
+    limit = int(req.q("limit", 100) or 100)
+    limit = max(1, min(limit, 5000))
     if not AUDIT_LOG.is_file():
-        return {"total": 0, "records": []}
+        return JSONResponse({"total": 0, "records": []})
     try:
         lines = AUDIT_LOG.read_text(encoding="utf-8").splitlines()
     except Exception as exc:
@@ -260,28 +253,32 @@ async def audit(limit: int = Query(100, ge=1, le=5000)) -> dict[str, Any]:
             continue
         if len(records) >= limit:
             break
-    return {"total": len(records), "records": records}
+    return JSONResponse({"total": len(records), "records": records})
 
 
 @app.get("/api/stats")
-async def stats() -> dict[str, Any]:
-    """威胁统计."""
+def stats(req: Request) -> JSONResponse:
     items = _list_items()
     by_threat: dict[str, int] = {}
     by_status: dict[str, int] = {}
     total_size = 0
     for i in items:
-        by_threat[i.get("detection_name") or "未知"] = (
-            by_threat.get(i.get("detection_name") or "未知", 0) + 1
-        )
+        name = i.get("detection_name") or "未知"
+        by_threat[name] = by_threat.get(name, 0) + 1
         st = i.get("status", "pending_review")
         by_status[st] = by_status.get(st, 0) + 1
         total_size += int(i.get("size") or 0)
-    return {
-        "total_items": len(items),
-        "total_size": total_size,
-        "by_threat": by_threat,
-        "by_status": by_status,
-        "quarantine_dir": str(QUARANTINE),
-        "generated_at": utcnow(),
-    }
+    return JSONResponse(
+        {
+            "total_items": len(items),
+            "total_size": total_size,
+            "by_threat": by_threat,
+            "by_status": by_status,
+            "quarantine_dir": str(QUARANTINE),
+            "generated_at": utcnow(),
+        }
+    )
+
+
+if __name__ == "__main__":
+    run(app, os.getenv("LISTEN_HOST", "0.0.0.0"), int(os.getenv("LISTEN_PORT", "8004")))

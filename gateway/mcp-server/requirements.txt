@@ -1,2 +1,7 @@
-mcp>=1.2.0
-httpx>=0.26
+# kse-ai-gateway MCP Server — 零第三方依赖
+#
+# MCP 协议即 JSON-RPC 2.0 over stdio, 本实现仅使用 Python 标准库。
+# 官方 mcp SDK 为可选, 但离线环境无需安装。
+#
+# 如需使用官方 SDK 客户端生态, 可选安装:
+#   pip install "mcp>=1.2"

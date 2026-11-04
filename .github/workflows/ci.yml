@@ -91,18 +91,55 @@ jobs:
         with:
           node-version: "20"
 
-      - name: 启动 Mock Scan Gateway
+      - name: 启动 Mock KSE (模拟卡巴斯基引擎, 拒绝远程路径扫描)
         run: |
-          nohup python3 scripts/mock_scan_gateway.py --port 18000 > /tmp/mock.log 2>&1 &
+          nohup python3 scripts/mock_kse.py --port 18123 --reject-remote > /tmp/mockkse.log 2>&1 &
           for i in $(seq 1 20); do
-            if curl -sf http://127.0.0.1:18000/health > /dev/null; then break; fi
+            if curl -sf http://127.0.0.1:18123/health > /dev/null; then break; fi
             sleep 0.5
           done
-          curl -sf http://127.0.0.1:18000/health
+          curl -sf http://127.0.0.1:18123/health
+
+      - name: 启动真实 Scan Gateway (零依赖实现) 连 Mock KSE
+        run: |
+          mkdir -p /tmp/ci/{scanqueue,quarantine,logs}
+          cd gateway/scan-gateway
+          KSE_URL=http://127.0.0.1:18123 \
+          KSE_MODE=auto \
+          SCAN_QUEUE=/tmp/ci/scanqueue \
+          QUARANTINE=/tmp/ci/quarantine \
+          ALLOWED_SCAN_DIRS=/tmp/ci/scanqueue,/tmp/ci/quarantine \
+          AUDIT_LOG=/tmp/ci/logs/audit.jsonl \
+          LISTEN_PORT=18100 \
+          nohup python3 app.py > /tmp/ci/gateway.log 2>&1 &
+          for i in $(seq 1 20); do
+            if curl -sf http://127.0.0.1:18100/health > /dev/null; then break; fi
+            sleep 0.5
+          done
+          curl -sf http://127.0.0.1:18100/health
+
+      - name: Scan Gateway 端到端 (EICAR 检出 + 自动回退 scanmemory + 隔离)
+        run: |
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > /tmp/ci/scanqueue/eicar.txt
+          R=$(curl -sf -X POST http://127.0.0.1:18100/scan/file -H "Content-Type: application/json" \
+                -d '{"file_path":"/tmp/ci/scanqueue/eicar.txt","timeout":60}')
+          echo "$R"
+          echo "$R" | grep -q '"verdict": "DETECT"' || { echo "::error::未检出 EICAR"; exit 1; }
+          echo "$R" | grep -q '"scan_mode": "memory"' || { echo "::error::未回退到 scanmemory"; exit 1; }
+          echo "$R" | grep -q '"quarantined": true' || { echo "::error::未自动隔离"; exit 1; }
+
+      - name: 压缩包内藏 EICAR 必须检出
+        run: |
+          mkdir -p /tmp/ci/pkg && cd /tmp/ci/pkg
+          printf '%s' 'X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*' > payload.sh
+          python3 -c "import zipfile;z=zipfile.ZipFile('/tmp/ci/bad.zip','w');z.write('/tmp/ci/pkg/payload.sh','payload.sh');z.close()"
+          R=$(curl -sf -X POST http://127.0.0.1:18100/scan/package -F "file=@/tmp/ci/bad.zip")
+          echo "$R"
+          echo "$R" | grep -q '"verdict": "DETECT"' || { echo "::error::压缩包内 EICAR 未检出"; exit 1; }
 
       - name: OpenClaw 插件拦截自测
         run: |
-          node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://127.0.0.1:18000
+          node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://127.0.0.1:18100
 
       - name: 探针在网关不可达时应报错而非误判通过
         run: |
@@ -115,11 +152,10 @@ jobs:
           fi
           echo "行为正确 (exit=$code)"
 
-      - name: Mock 模式端到端 (Scan Gateway 层)
+      - name: Mock KSE 引擎端点自测
         run: |
-          chmod +x scripts/verify.sh
-          KSE_SCAN_GATEWAY=http://127.0.0.1:18000 \
-          SCAN_GATEWAY=http://127.0.0.1:18000 \
-          UPLOAD_GATEWAY=http://127.0.0.1:19998 \
-          CONSOLE_URL=http://127.0.0.1:19997 \
-          ./scripts/verify.sh --layer l1 || true
+          python3 scripts/mock_kse.py --help > /dev/null
+          curl -sf -X POST http://127.0.0.1:18123/api/v3.0/checkurl \
+            -H "Content-Type: application/octet-stream" \
+            -d '{"url":"http://malicious.example.com/"}' | grep -q DETECT
+          echo "URL 扫描端点正常"

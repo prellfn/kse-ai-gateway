@@ -8,6 +8,15 @@
 （Kaspersky Scan Engine, KSE），把 AI Agent 的所有高危操作——**工具调用、Skill 下载、脚本执行、
 模型加载、URL 访问、知识库文档上传**——统一交给 KSE 扫描判定，实现「**Agent 不裸跑，恶意内容不过网**」。
 
+**三个工程特性：**
+
+- **零第三方依赖** —— 所有服务仅用 Python 3.9+ 标准库实现，**不需要 pip / venv / 外网**，
+  可直接部署在 KSE 所在的离线内网（已在真实离线环境验证通过）。
+- **支持分离部署** —— 网关与 KSE 不在同一台机器时，自动从路径扫描回退到内存扫描
+  （KSE 的路径扫描只允许本机调用）。
+- **已在生产环境验证** —— EICAR 检出、自动隔离、压缩包逐文件扫描、URL 扫描、MCP 工具调用
+  全部实测通过。
+
 本仓库包含已在生产环境验证过的完整实现：
 
 | 层次 | 组件 | 说明 |
@@ -124,6 +133,43 @@ graph TB
 | OpenClaw Plugin | Node.js 插件 | — | 事前拦截 write / edit / exec / fetch |
 | KSE File Watcher | PowerShell 计划任务 | — | 事后兜底扫描 skills / plugins / npm |
 | AnythingLLM | Docker | 3001 | 知识库前端 |
+
+---
+
+## 部署拓扑
+
+### 同机部署（传统拓扑）
+
+网关与 KSE 在同一台机器，可使用 KSE 的**路径扫描**（扫描结果最准，KSE 可直接读取磁盘文件）。
+
+```
+┌───────────────────────── 一台机器 ─────────────────────────┐
+│  KSE :8443  ──►  Scan Gateway :8000  ──►  Upload :8002    │
+│  :443 Web UI        Quarantine Console :8004              │
+└────────────────────────────────────────────────────────────┘
+```
+
+### 分离部署（跨机拓扑）
+
+KSE 独立成机时，KSE 的**路径扫描只允许本机调用**（跨机会返回
+`Scan file via remote request is rejected`）。此时网关自动回退到
+**内存扫描**（`scanmemory`，base64 传输内容），能力等价：
+
+```
+┌── AI 网关机 (Ubuntu) ─────────────┐        ┌── KSE 主机 ──────────┐
+│  Scan Gateway :8000               │───────►│  KSE :1234 / :8443   │
+│  Upload :8002  Console :8004      │  HTTP  │  (路径扫描仅限本机)   │
+│  MCP Server (stdio)               │        └──────────────────────┘
+└───────────────────────────────────┘
+```
+
+```bash
+# 分离部署时的配置
+KSE_URL=http://192.168.1.122:1234
+KSE_MODE=auto          # 自动回退到 scanmemory
+```
+
+> 也可以把网关直接部署在 KSE 主机上以获得完整的路径扫描能力。
 
 ---
 
@@ -279,6 +325,9 @@ cd integrations/workbuddy && ./install.sh
 ```
 kse-ai-gateway/
 ├── gateway/
+│   ├── common/
+│   │   ├── kserver.py             # 零依赖微型 HTTP 框架 (stdlib only)
+│   │   └── kse.py                 # KSE HTTP API 客户端 (file / memory / url 三种模式)
 │   ├── scan-gateway/
 │   │   └── app.py                 # :8000  扫描核心（file/upload/package/url/directory）
 │   ├── upload-gateway/
@@ -497,8 +546,17 @@ node integrations/common/plugin-probe.js agent/openclaw-plugin/index.js http://1
 
 ```bash
 # ---- KSE ----
+# 网关与 KSE 同机:   KSE_URL=https://127.0.0.1:8443
+# 网关与 KSE 分离:   KSE_URL=http://192.168.1.122:1234
 KSE_URL=https://127.0.0.1:8443
-KSE_TOKEN=your-kse-plaintext-token     # 明文 Token，勿提交
+
+# 扫描模式:
+#   auto   (推荐) 先试路径扫描, 遇 KSE 拒绝跨机路径扫描时自动回退内存扫描
+#   file   仅路径扫描 —— 要求网关与 KSE 同机
+#   memory 仅内存扫描 —— 分离部署必须用这个
+KSE_MODE=auto
+
+KSE_TOKEN=your-kse-plaintext-token     # 明文 Token，勿提交；KSE 未开认证时留空
 KSE_TIMEOUT=120
 KSE_VERIFY_TLS=false
 
@@ -561,6 +619,7 @@ WORKSPACE_SLUG=your-workspace-slug
 | [`docs/operations.md`](docs/operations.md) | 运维手册（服务管理、日志、故障排查、病毒库更新、备份恢复） |
 | [`docs/api.md`](docs/api.md) | API 参考（4 个服务的完整接口定义） |
 | [`docs/verification.md`](docs/verification.md) | **新环境验证指南**（分层验证 + 验收清单 + 排障） |
+| [`docs/field-notes.md`](docs/field-notes.md) | **真实环境落地记录**（KSE 2.2 实际行为差异与踩坑） |
 | [`docs/architecture.md`](docs/architecture.md) | 架构拓扑与数据流时序图 |
 | [`docs/kse_architecture.html`](docs/kse_architecture.html) | 交互式架构图（浏览器打开） |
 | [`gateway/mcp-server/README.md`](gateway/mcp-server/README.md) | MCP Server 接入说明 |

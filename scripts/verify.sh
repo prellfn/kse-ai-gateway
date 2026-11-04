@@ -18,12 +18,30 @@
 # ---------------------------------------------------------------------------
 set -uo pipefail
 
+KSE_URL_EXPLICIT="${KSE_URL:-}"          # 用户是否显式指定 (在套默认值前记录)
+KSE_TOKEN_EXPLICIT="${KSE_TOKEN:-}"
 KSE_URL="${KSE_URL:-https://127.0.0.1:8443}"
 SCAN_GATEWAY="${SCAN_GATEWAY:-http://127.0.0.1:8000}"
 UPLOAD_GATEWAY="${UPLOAD_GATEWAY:-http://127.0.0.1:8002}"
 CONSOLE_URL="${CONSOLE_URL:-http://127.0.0.1:8004}"
-MCP_PYTHON="${MCP_PYTHON:-/opt/ai-stack/mcp-venv/bin/python}"
+MCP_PYTHON="${MCP_PYTHON:-/usr/bin/python3}"
 MCP_SERVER="${MCP_SERVER:-/opt/ai-stack/mcp-server/server.py}"
+
+# 自动读取已部署的配置 (KSE_URL / KSE_TOKEN), 避免与实际环境不一致
+DEPLOY_ENV="/opt/ai-stack/scan-gateway/.env"
+if [ -f "$DEPLOY_ENV" ]; then
+    # 用户未显式指定时, 优先使用部署配置
+    if [ -z "$KSE_URL_EXPLICIT" ]; then
+        _u=$(grep -E "^KSE_URL=" "$DEPLOY_ENV" | tail -1 | cut -d= -f2-)
+        [ -n "$_u" ] && KSE_URL="$_u"
+    fi
+    if [ -z "$KSE_TOKEN_EXPLICIT" ]; then
+        _t=$(grep -E "^KSE_TOKEN=" "$DEPLOY_ENV" | tail -1 | cut -d= -f2-)
+        [ -n "$_t" ] && KSE_TOKEN="$_t"
+    fi
+    echo "已加载部署配置: $DEPLOY_ENV"
+    echo "  KSE_URL=$KSE_URL  KSE_TOKEN=${KSE_TOKEN:+<已配置>}${KSE_TOKEN:-<未配置>}"
+fi
 
 WORKDIR="$(mktemp -d /tmp/kse-verify-XXXXXX)"
 KEEP=0
@@ -85,19 +103,17 @@ echo "=============================================="
 # ===========================================================================
 if want_layer l0; then
 head_ "L0  KSE 引擎直连 (绕过网关)"
-if [ -z "${KSE_TOKEN:-}" ]; then
-    skip "KSE 直扫 EICAR" "未提供 KSE_TOKEN，跳过"
-else
-    make_eicar "$WORKDIR/eicar.txt"
+make_eicar "$WORKDIR/eicar.txt"
+if [ -n "${KSE_TOKEN:-}" ]; then
     RESP=$(curl -sk --max-time 60 -X POST "$KSE_URL/api/v3.0/scanfile" \
         -H "Content-Type: application/octet-stream" \
         -H "Authorization: Bearer $KSE_TOKEN" \
         -d "{\"timeout\":\"60000\",\"object\":\"$WORKDIR/eicar.txt\"}")
     V=$(printf '%s' "$RESP" | jget scanResult)
     if [ "$V" = "DETECT" ]; then
-        ok "KSE 直扫 EICAR" "scanResult=DETECT"
+        ok "KSE 直扫 EICAR (带 Token)" "scanResult=DETECT"
     else
-        bad "KSE 直扫 EICAR" "期望 DETECT, 实际 '${V:-空}'  -> 检查 Token 与扫描目录白名单"
+        bad "KSE 直扫 EICAR (带 Token)" "期望 DETECT, 实际 '${V:-空}'  -> 检查 Token 与扫描目录白名单"
     fi
 
     # 不带 Token 应被拒绝
@@ -109,6 +125,22 @@ else
     else
         warn "KSE 无 Token 拒绝访问" "HTTP $CODE (期望 401/403)"
     fi
+else
+    # KSE 未开启 Token 认证。
+    # 注意: 路径扫描 (scanfile) 只允许在 KSE 本机调用, 跨机会被拒绝,
+    # 因此网关与 KSE 分离部署时, L0 改用内存扫描 (scanmemory) 直测引擎。
+    B64=$(base64 -w0 "$WORKDIR/eicar.txt" 2>/dev/null || base64 "$WORKDIR/eicar.txt" | tr -d '\n')
+    RESP=$(curl -sk --max-time 60 -X POST "$KSE_URL/api/v3.0/scanmemory" \
+        -H "Content-Type: application/octet-stream" \
+        -d "{\"timeout\":\"60000\",\"object\":\"$B64\"}")
+    V=$(printf '%s' "$RESP" | jget scanResult)
+    if [ "$V" = "DETECT" ]; then
+        ok "KSE 直扫 EICAR (无 Token 认证)" "scanResult=DETECT (scanmemory 跨机)"
+    elif printf '%s' "$RESP" | grep -qi "token\|authoriz"; then
+        skip "KSE 直扫 EICAR" "KSE 开启了 Token 认证, 需提供 KSE_TOKEN"
+    else
+        bad "KSE 直扫 EICAR (无 Token 认证)" "期望 DETECT, 实际 '${V:-空}' -> ${RESP:0:150}"
+    fi
 fi
 fi
 
@@ -119,7 +151,7 @@ if want_layer l1; then
 head_ "L1  Scan Gateway (:8000)"
 
 RESP=$(curl -s --max-time 10 "$SCAN_GATEWAY/health")
-if printf '%s' "$RESP" | grep -q '"status":"ok"'; then
+if printf '%s' "$RESP" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"'; then
     ok "健康检查 /health" "status=ok"
 else
     bad "健康检查 /health" "无响应 -> systemctl status scan-gateway"
@@ -218,7 +250,7 @@ if want_layer l2; then
 head_ "L2  Upload Gateway (:8002)"
 
 RESP=$(curl -s --max-time 10 "$UPLOAD_GATEWAY/health")
-if printf '%s' "$RESP" | grep -q '"status":"ok"'; then
+if printf '%s' "$RESP" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"'; then
     ok "健康检查 /health" "status=ok"
 else
     bad "健康检查 /health" "无响应 -> systemctl status upload-gateway"
@@ -250,7 +282,7 @@ if want_layer l3; then
 head_ "L3  隔离区复核台 (:8004)"
 
 RESP=$(curl -s --max-time 10 "$CONSOLE_URL/health")
-if printf '%s' "$RESP" | grep -q '"status":"ok"'; then
+if printf '%s' "$RESP" | grep -qE '"status"[[:space:]]*:[[:space:]]*"ok"'; then
     ok "健康检查 /health" "status=ok"
 else
     bad "健康检查 /health" "无响应 -> systemctl status quarantine-console"
@@ -265,7 +297,7 @@ else
 fi
 
 RESP=$(curl -s --max-time 15 "$CONSOLE_URL/api/stats")
-if printf '%s' "$RESP" | grep -q 'by_threat'; then
+if printf '%s' "$RESP" | grep -qE '"by_threat"'; then
     ok "威胁统计 API" "by_threat 字段存在"
 else
     bad "威胁统计 API" "无有效响应"
@@ -327,7 +359,7 @@ fi
 if want_layer l5; then
 head_ "L5  systemd 服务与监控"
 
-for SVC in kavhttpd scan-gateway upload-gateway quarantine-console; do
+for SVC in scan-gateway upload-gateway quarantine-console; do
     STATE=$(systemctl is-active "$SVC" 2>/dev/null)
     if [ "$STATE" = "active" ]; then
         ok "服务 $SVC" "active"
@@ -335,6 +367,23 @@ for SVC in kavhttpd scan-gateway upload-gateway quarantine-console; do
         bad "服务 $SVC" "状态=$STATE"
     fi
 done
+
+# KSE 可能与网关同机 (systemd), 也可能部署在另一台机器 (远程 HTTP)
+if systemctl list-unit-files 2>/dev/null | grep -q kavhttpd; then
+    STATE=$(systemctl is-active kavhttpd 2>/dev/null)
+    if [ "$STATE" = "active" ]; then
+        ok "服务 kavhttpd (本机)" "active"
+    else
+        bad "服务 kavhttpd (本机)" "状态=$STATE"
+    fi
+else
+    if curl -s -m 10 -o /dev/null "$KSE_URL/api/v3.0/checkurl" -X POST \
+         -H "Content-Type: application/octet-stream" -d '{"url":"http://www.kaspersky.com/"}'; then
+        ok "KSE 远程可达" "$KSE_URL (部署在独立主机)"
+    else
+        bad "KSE 远程可达" "无法连接 $KSE_URL"
+    fi
+fi
 
 if systemctl is-active --quiet ollama-watcher 2>/dev/null; then
     ok "服务 ollama-watcher" "active"
