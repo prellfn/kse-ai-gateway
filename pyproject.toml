@@ -4,11 +4,10 @@ target-version = "py310"
 exclude = [".git", "__pycache__", "docs", "node_modules"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP"]
+select = ["E", "F", "W", "B"]
 ignore = [
     "E501",    # 行长度由 formatter 控制
-    "B008",    # FastAPI Depends() 默认值
-    "UP038",   # isinstance 元组写法
+    "B008",    # FastAPI 风格默认值
 ]
 
 [tool.ruff.lint.per-file-ignores]

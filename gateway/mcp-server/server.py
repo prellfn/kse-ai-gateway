@@ -18,7 +18,6 @@
 """
 from __future__ import annotations
 
-import base64
 import json
 import os
 import sys
@@ -42,7 +41,7 @@ ALLOWED_SUFFIXES = (".zip", ".tar", ".gz", ".tgz", ".bz2", ".xz", ".tar.gz", ".t
 # HTTP 客户端 (仅用标准库)
 # ---------------------------------------------------------------------------
 def _post_json(path: str, payload: dict, timeout: int = TIMEOUT) -> dict[str, Any]:
-    body = json.dumps(payload).encode("utf-8")
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(
         f"{SCAN_GATEWAY}{path}",
         data=body,
@@ -69,8 +68,8 @@ def _post_multipart(path: str, filename: str, content: bytes, content_type: str 
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'
         f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
-    body = head + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    ).encode()
+    body = head + content + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(
         f"{SCAN_GATEWAY}{path}",
         data=body,
@@ -136,10 +135,9 @@ def tool_scan_file(args: dict[str, Any]) -> str:
 def tool_scan_text(args: dict[str, Any]) -> str:
     filename = str(args.get("filename") or "content.txt")
     content = str(args.get("content") or "")
-    raw = content.encode("utf-8")
+    raw = content.encode()
     if len(raw) > MAX_TEXT_BYTES:
         raise ValueError(f"内容过大 ({len(raw)} bytes > {MAX_TEXT_BYTES})")
-    timeout = int(args.get("timeout") or 120)
     result = _post_multipart("/scan/upload", filename, raw)
     return _format(result)
 

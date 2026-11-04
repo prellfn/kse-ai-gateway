@@ -17,11 +17,10 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-import socketserver
-import threading
 import traceback
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Any, Callable
+from typing import Any
 import urllib.parse
 from urllib.parse import parse_qs, unquote, urlparse
 
@@ -53,7 +52,7 @@ class Response:
     status_code = 200
 
     def __init__(self, content: bytes = b"", status_code: int | None = None, headers: dict | None = None):
-        self.body = content if isinstance(content, bytes) else str(content).encode("utf-8")
+        self.body = content if isinstance(content, bytes) else str(content).encode()
         if status_code is not None:
             self.status_code = status_code
         self.headers = headers or {}
@@ -67,7 +66,7 @@ class JSONResponse(Response):
 
     def __init__(self, content: Any, status_code: int = 200, headers: dict | None = None):
         super().__init__(
-            json.dumps(content, ensure_ascii=False, default=str).encode("utf-8"),
+            json.dumps(content, ensure_ascii=False, default=str).encode(),
             status_code,
             headers,
         )
@@ -133,7 +132,7 @@ class Request:
         if "boundary=" not in ctype:
             return {}, {}
         boundary = ctype.split("boundary=")[-1].strip().strip('"')
-        sep = b"--" + boundary.encode("utf-8")
+        sep = b"--" + boundary.encode()
         form: dict[str, str] = {}
         files: dict[str, UploadFile] = {}
 

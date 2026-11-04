@@ -17,7 +17,6 @@ import json
 import os
 import shutil
 import sys
-import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
@@ -107,7 +106,7 @@ def _audit(event: str, **fields: Any) -> None:
 
 
 def _post_scan(file_path: str, timeout: int = 300) -> dict:
-    body = json.dumps({"file_path": file_path, "timeout": timeout}).encode("utf-8")
+    body = json.dumps({"file_path": file_path, "timeout": timeout}).encode()
     req = urllib.request.Request(
         f"{SCAN_GATEWAY}/scan/file",
         data=body,

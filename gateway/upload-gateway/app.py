@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import os
-import ssl
 import sys
 import time
 import urllib.error
@@ -44,7 +43,7 @@ app = App(title="AnythingLLM 安全上传门卫", version="1.2.0")
 
 
 def _post_json(url: str, payload: dict, timeout: int = 600, headers: dict | None = None) -> tuple[int, Any]:
-    body = json.dumps(payload).encode("utf-8")
+    body = json.dumps(payload).encode()
     req = urllib.request.Request(url, data=body, headers=headers or {}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -66,8 +65,8 @@ def _post_multipart(url: str, field: str, filename: str, content: bytes, content
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="{field}"; filename="{filename}"\r\n'
         f"Content-Type: {content_type}\r\n\r\n"
-    ).encode("utf-8")
-    body = head + content + f"\r\n--{boundary}--\r\n".encode("utf-8")
+    ).encode()
+    body = head + content + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(
         url,
         data=body,

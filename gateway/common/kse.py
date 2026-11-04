@@ -63,7 +63,7 @@ class KseClient:
         return headers
 
     def _post(self, path: str, payload: dict) -> dict:
-        body = json.dumps(payload).encode("utf-8")
+        body = json.dumps(payload).encode()
         req = urllib.request.Request(
             f"{self.url}{path}",
             data=body,
