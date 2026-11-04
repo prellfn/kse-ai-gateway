@@ -38,7 +38,12 @@ jobs:
         uses: ludeeus/action-shellcheck@master
         with:
           scandir: ./scripts
-          additional_files: ./watchers/ollama-watcher.sh
+          additional_files: >-
+            ./watchers/ollama-watcher.sh
+            ./integrations/opencode/install.sh
+            ./integrations/workbuddy/install.sh
+            ./integrations/workbuddy/skill/scripts/scan.sh
+            ./integrations/workbuddy/skill/scripts/download-and-scan.sh
           severity: error
 
   node:
@@ -53,6 +58,13 @@ jobs:
       - name: 插件加载检查
         working-directory: agent/openclaw-plugin
         run: node -e "require('./index.js'); console.log('OK')"
+
+      - name: 接入层 JS 语法检查
+        run: |
+          node --check integrations/common/kse-client.js
+          cp integrations/opencode/plugin/kse-gate.js /tmp/kse-gate.mjs
+          node --check /tmp/kse-gate.mjs
+          node -e "require('./integrations/common/kse-client.js'); console.log('CLIENT OK')"
 
   secrets-scan:
     runs-on: ubuntu-latest

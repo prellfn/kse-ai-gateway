@@ -27,6 +27,7 @@
 - [它解决什么问题](#它解决什么问题)
 - [整体架构](#整体架构)
 - [防护能力矩阵](#防护能力矩阵)
+- [AI Agent 接入](#ai-agent-接入)
 - [仓库结构](#仓库结构)
 - [快速开始](#快速开始)
 - [核心 API](#核心-api)
@@ -198,6 +199,80 @@ Codex、Claude Code、Claude Desktop 等客户端只需一份 MCP 配置即可�
 
 ---
 
+## AI Agent 接入
+
+三种 Agent 共用**同一个** Scan Gateway 与 KSE，威胁统一隔离、审计统一留痕。
+接入层在 [`integrations/`](integrations/) 目录，详见 [接入层说明](integrations/README.md)。
+
+| Agent | 主接入方式 | 拦截时机 | 安装脚本 |
+| --- | --- | --- | --- |
+| **Codex** | MCP Server + Skill | Agent 主动调用（工具触发） | `integrations/codex/install.ps1` |
+| **OpenCode** | 插件 `tool.execute.before` + MCP | **事前自动拦截** | `integrations/opencode/install.sh` |
+| **WorkBuddy** | Skill 包 + 下载代理 + MCP | 代理层 + Agent 主动调用 | `integrations/workbuddy/install.sh` |
+
+### Codex（MCP + Skill）
+
+```toml
+# ~/.codex/config.toml
+[mcp_servers.kse-ai-gateway]
+command = "/opt/ai-stack/mcp-venv/bin/python"
+args = ["/opt/ai-stack/mcp-server/server.py"]
+env = { KSE_SCAN_GATEWAY = "http://127.0.0.1:8000", KSE_SCAN_TIMEOUT = "300" }
+enabled = true
+```
+
+```powershell
+cd integrations/codex
+.\install.ps1 -ScanGateway "http://10.0.0.1:8000"
+```
+
+Skill `kse-scan` 会告诉 Codex **何时该扫描**（下载 Skill / 跑脚本 / 加载模型 / 访问链接 / 写知识库）。
+
+### OpenCode（插件事前拦截 · 最强）
+
+插件挂 `tool.execute.before` 钩子，在工具执行前扫描并阻断：
+
+| 工具 | 扫描对象 |
+| --- | --- |
+| `write` / `edit` / `patch` | 写入 / 编辑的内容 |
+| `bash` / `shell` / `exec` | 待执行脚本、待加载模型、命令中的 URL |
+| `webfetch` / `fetch` / `browse` | 待访问的 URL |
+
+```bash
+cd integrations/opencode && ./install.sh
+```
+
+### WorkBuddy（Skill 下载代理 · 先扫后装）
+
+```bash
+# 安装 Skill + MCP 配置
+cd integrations/workbuddy && ./install.sh
+
+# Skill / 插件包「先扫后装」下载代理（Fail-Closed）
+./integrations/workbuddy/skill/scripts/download-and-scan.sh \
+    https://example.com/some-skill.zip ~/workbuddy/skills/
+```
+
+知识库上传则直接把上传地址指向 Upload Gateway（`:8002`），「先扫后入库」是默认行为。
+
+### 通用 MCP 配置
+
+任何支持 MCP 的客户端都直接用 `gateway/mcp-server`（stdio），5 个工具：
+`scan_file` / `scan_text` / `scan_url` / `scan_skill_pkg` / `kse_status`。
+
+```json
+{
+  "mcpServers": {
+    "kse-ai-gateway": {
+      "command": "python3",
+      "args": ["/opt/ai-stack/mcp-server/server.py"],
+      "env": { "KSE_SCAN_GATEWAY": "http://127.0.0.1:8000", "KSE_SCAN_TIMEOUT": "300" }
+    }
+  }
+}
+```
+
+---
 ## 仓库结构
 
 ```
@@ -232,6 +307,12 @@ kse-ai-gateway/
 │       └── README.md
 ├── watchers/
 │   └── ollama-watcher.sh          # Linux 模型目录监控 + 自动隔离
+├── integrations/                  # AI Agent 接入层
+│   ├── README.md                  # 三种 Agent 接入总览与对比
+│   ├── common/kse-client.js       # 共用 Node 客户端库
+│   ├── codex/                     # Codex: config.toml + Skill + install.ps1
+│   ├── opencode/                  # OpenCode: 插件 + opencode.json + install.sh
+│   └── workbuddy/                 # WorkBuddy: Skill + 下载代理 + install.sh
 ├── scripts/
 │   ├── install_ubuntu.sh          # Linux 一键部署网关
 │   └── backup_kse.sh              # 备份 / 恢复脚本
@@ -411,6 +492,7 @@ WORKSPACE_SLUG=your-workspace-slug
 | [`docs/architecture.md`](docs/architecture.md) | 架构拓扑与数据流时序图 |
 | [`docs/kse_architecture.html`](docs/kse_architecture.html) | 交互式架构图（浏览器打开） |
 | [`gateway/mcp-server/README.md`](gateway/mcp-server/README.md) | MCP Server 接入说明 |
+| [`integrations/README.md`](integrations/README.md) | Codex / OpenCode / WorkBuddy 接入说明 |
 | [`agent/openclaw-plugin/README.md`](agent/openclaw-plugin/README.md) | OpenClaw 插件接入说明 |
 | [`agent/windows-watcher/README.md`](agent/windows-watcher/README.md) | Windows 监控接入说明 |
 

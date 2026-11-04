@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kse-ai-gateway": {
+      "command": "python3",
+      "args": ["/opt/ai-stack/mcp-server/server.py"],
+      "env": {
+        "KSE_SCAN_GATEWAY": "http://127.0.0.1:8000",
+        "KSE_SCAN_TIMEOUT": "300"
+      }
+    }
+  }
+}

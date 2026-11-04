@@ -1,0 +1,19 @@
+# ===========================================================================
+# Codex CLI — kse-ai-gateway MCP 配置
+#
+# 合并到 ~/.codex/config.toml (没有该文件就直接创建)
+# 安装脚本: ./install.ps1
+# ===========================================================================
+
+[mcp_servers.kse-ai-gateway]
+command = "/opt/ai-stack/mcp-venv/bin/python"
+args = ["/opt/ai-stack/mcp-server/server.py"]
+env = { KSE_SCAN_GATEWAY = "http://127.0.0.1:8000", KSE_SCAN_TIMEOUT = "300" }
+enabled = true
+startup_timeout_sec = 30
+tool_timeout_sec = 180
+
+# ---------------------------------------------------------------------------
+# 如需让 Codex 无条件使用扫描能力, 可再配合安装 Skill:
+#   ~/.codex/skills/kse-scan/SKILL.md
+# ---------------------------------------------------------------------------

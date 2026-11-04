@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "kse-ai-gateway": {
+      "type": "local",
+      "command": ["python3", "/opt/ai-stack/mcp-server/server.py"],
+      "environment": {
+        "KSE_SCAN_GATEWAY": "http://127.0.0.1:8000",
+        "KSE_SCAN_TIMEOUT": "300"
+      },
+      "enabled": true
+    }
+  },
+  "plugin": [".opencode/plugin/kse-gate.js"]
+}
