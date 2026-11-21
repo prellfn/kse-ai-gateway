@@ -120,7 +120,7 @@ jobs:
 
       - name: Scan Gateway 端到端 (EICAR 检出 + 自动回退 scanmemory + 隔离)
         run: |
-          python3 -c "s=''.join(map(chr,[88,53,79,33,80,37,64,65,80,91,52,92,80,90,88,53,52,40,80,94,41,55,67,67,41,55,125,36,69,73,67,65,82,45,83,84,65,78,68,65,82,68,45,65,86,73,82,85,83,45,84,69,83,84,45,70,73,76,69,33,36,72,43,72,42]));open('/tmp/ci/scanqueue/eicar.txt','w').write(s)"
+          python3 -c "s=''.join(map(chr,[88,53,79,33,80,37,64,65,80,91,52,92,80,90,88,53,52,40,80,94,41,55,67,67,41,55,125,36,69,73,67,65,82,45,83,84,65,78,68,65,82,68,45,65,78,84,73,86,73,82,85,83,45,84,69,83,84,45,70,73,76,69,33,36,72,43,72,42]));open('/tmp/ci/scanqueue/eicar.txt','w').write(s)"
           R=$(curl -sf -X POST http://127.0.0.1:18100/scan/file -H "Content-Type: application/json" \
                 -d '{"file_path":"/tmp/ci/scanqueue/eicar.txt","timeout":60}')
           echo "$R"
@@ -131,7 +131,7 @@ jobs:
       - name: 压缩包内藏 EICAR 必须检出
         run: |
           mkdir -p /tmp/ci/pkg && cd /tmp/ci/pkg
-          python3 -c "s=''.join(map(chr,[88,53,79,33,80,37,64,65,80,91,52,92,80,90,88,53,52,40,80,94,41,55,67,67,41,55,125,36,69,73,67,65,82,45,83,84,65,78,68,65,82,68,45,65,86,73,82,85,83,45,84,69,83,84,45,70,73,76,69,33,36,72,43,72,42]));open('/tmp/ci/pkg/payload.sh','w').write(s)"
+          python3 -c "s=''.join(map(chr,[88,53,79,33,80,37,64,65,80,91,52,92,80,90,88,53,52,40,80,94,41,55,67,67,41,55,125,36,69,73,67,65,82,45,83,84,65,78,68,65,82,68,45,65,78,84,73,86,73,82,85,83,45,84,69,83,84,45,70,73,76,69,33,36,72,43,72,42]));open('/tmp/ci/pkg/payload.sh','w').write(s)"
           python3 -c "import zipfile;z=zipfile.ZipFile('/tmp/ci/bad.zip','w');z.write('/tmp/ci/pkg/payload.sh','payload.sh');z.close()"
           R=$(curl -sf -X POST http://127.0.0.1:18100/scan/package -F "file=@/tmp/ci/bad.zip")
           echo "$R"
