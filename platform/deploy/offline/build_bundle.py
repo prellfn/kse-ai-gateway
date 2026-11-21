@@ -70,6 +70,11 @@ def main():
         copytree(REPO / "lite", work / "lite")
         print("  已包含 lite 网关形态")
 
+    # 顶层运维脚本（防火墙加固等）：docs 里的命令会引用它
+    if (REPO / "scripts").is_dir():
+        copytree(REPO / "scripts", work / "scripts")
+        print("  已包含顶层运维脚本")
+
     (work / "docs").mkdir()
     for f in (ROOT / "docs").glob("*.docx"):
         shutil.copy2(f, work / "docs" / f.name)
