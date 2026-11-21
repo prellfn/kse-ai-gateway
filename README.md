@@ -344,6 +344,7 @@ python3 lite/scripts/mock_scan_gateway.py --port 18000            # 模拟网关
 | [`platform/docs/KAIP_PoC实施手册.docx`](platform/docs/KAIP_PoC实施手册.docx) | PoC 实施手册（交付物） |
 | [`docs/verification.md`](docs/verification.md) | 分层验证指南 + 验收清单 + 排障 |
 | [`docs/field-notes.md`](docs/field-notes.md) | 真实环境落地记录 |
+| [`docs/security-hardening.md`](docs/security-hardening.md) | **安全加固指南**（KSE 无认证暴露面、复核台无鉴权、防火墙收口） |
 | [`docs/install.md`](docs/install.md) | Lite 网关部署 |
 | [`integrations/README.md`](integrations/README.md) | Lite 形态 Agent 接入 |
 | [`lite/README.md`](lite/README.md) | Lite 网关形态说明（两种后端 / 判定映射） |

@@ -415,3 +415,88 @@ fb_bad.txt     verdict=DETECT  detection=EICAR-Test-File
   KSE ICAP 接入扫描链路
 - KSE 病毒库版本 `21.11.2026 07:02 GMT`，KAVSDK `8.10.3.677`
 - ⚠️ **KSE 许可证 2026-12-23 到期**，需尽快续期
+
+
+---
+
+## 10. 安全加固实测（2026-11-21）
+
+### 10.1 发现的暴露面
+
+| 位置 | 问题 | 实测证据 |
+|---|---|---|
+| `.122` KSE `:1234` | **完全不校验 Token** | 错误 Token / 不带 Token 均返回 `scanResult: CLEAN` |
+| `.122` 全机 | 无防火墙 | `ufw status` = inactive，`iptables -P INPUT ACCEPT` |
+| `.121` 复核台 `:8004` | 无鉴权，且可**恢复/删除**隔离文件 | HTTP 200 直达 |
+| `.122` KSE Web UI `:443` | 局域网全暴露 | 0.0.0.0 监听 |
+
+> KAIP 平台 `.env` 里的 `KAIP_KSE_TOKEN` 在 KSE 未开启认证时**是无效的** —— 只是装饰。
+
+### 10.2 加固方式：外科式，不翻转默认策略
+
+`scripts/harden-firewall.sh` 的设计取舍：
+
+- **不** `ufw default deny incoming` —— `.122` 上还跑着 ClickHouse、nginx、squid、
+  KSE ICAP、rpcbind 等多个业务端口，翻转默认策略一旦漏规则就会中断业务
+- 只对**高危端口**加「先放行具体来源 → 再拒绝其他所有来源」的规则
+  （ufw 按插入顺序先匹配先生效，所以放行规则必须排在拒绝规则之前）
+- 幂等，可重复执行；带 `--dry-run` 预览
+
+### 10.3 实际落地的规则
+
+`.122`（KSE 主机）：
+
+```
+22/tcp              ALLOW  Anywhere                  # SSH
+1234/tcp            ALLOW  127.0.0.1                 # KSE API 本机
+1234/tcp            ALLOW  192.168.1.121             # KSE API from Lite 网关
+1234/tcp            ALLOW  172.16.0.0/12             # KSE API from docker net
+1234/tcp            DENY   Anywhere                  # 其余全部拒绝
+```
+
+`.121`（Lite 网关机）：
+
+```
+22/tcp              ALLOW  Anywhere                  # SSH
+8004/tcp            ALLOW  127.0.0.1                 # 复核台本机
+8004/tcp            ALLOW  192.168.1.122             # 复核台 from 平台
+8004/tcp            ALLOW  192.168.1.14              # 复核台 from 管理端
+8004/tcp            DENY   Anywhere                  # 其余全部拒绝
+```
+
+### 10.4 验证结果
+
+从未授权侧（192.168.100.83，第三个网段）实测：
+
+| 目标 | 期望 | 实测 |
+|---|---|---|
+| `.122:1234` KSE API | BLOCKED | **BLOCKED**（HTTP 000） |
+| `.122:8080` 平台 API | OPEN | **OPEN** |
+| `.121:8004` 复核台 | BLOCKED | **BLOCKED**（HTTP 000） |
+| `.121:8000` Scan Gateway | OPEN | **OPEN** |
+
+规则命中计数验证（`iptables -L ufw-user-input -n -v`）：Deny 规则 pkts 由 0 递增到 12，
+确认是防火墙在拦，而非应用层报错。
+
+加固后业务回归（全部通过）：
+
+```
+.121 三服务           active
+委托链路 干净文件      verdict=CLEAN  mode=kaip
+委托链路 恶意文件      verdict=DETECT detection=EICAR-Test-File quarantined=True
+KSE 直连模式           HTTP=200（.121 -> .122:1234 未被误伤）
+复核台本机             HTTP=200
+```
+
+### 10.5 尚未闭环的一项（需在 Web UI 操作）
+
+KSE 的 Token 认证仍需**在 Web UI 开启**（手册明确不建议手改 XML）。
+开启后平台与网关侧只需同步两个变量：
+
+```bash
+KSE_URL=https://<KSE>:8443
+KSE_TOKEN=<Web UI 生成的明文 Token>
+KSE_VERIFY_TLS=false
+```
+
+详见 [`security-hardening.md`](security-hardening.md)。
