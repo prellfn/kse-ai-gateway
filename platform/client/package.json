@@ -1,0 +1,9 @@
+{
+  "name": "kaip-client",
+  "version": "1.0.0",
+  "description": "Kaspersky AI Protect 终端客户端：Codex / OpenCode / WorkBuddy 运行时防护（零依赖）",
+  "license": "UNLICENSED",
+  "private": true,
+  "bin": { "kaip": "bin/kaip.js", "kaip-hook": "bin/kaip-hook.js" },
+  "engines": { "node": ">=18" }
+}

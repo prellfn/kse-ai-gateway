@@ -10,7 +10,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-REPO_ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
+REPO_ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"   # lite/ 目录
 STACK_DIR="/opt/ai-stack"
 
 echo "=============================================="
@@ -53,19 +53,19 @@ mkdir -p /var/log/kse-ai-stack
 # 3. 部署程序
 # ---------------------------------------------------------------------------
 echo "[3/6] 部署 Gateway 程序..."
-cp "$REPO_ROOT/gateway/common/kserver.py" "$STACK_DIR/common_kserver_tmp.py" 2>/dev/null || true
+cp "$REPO_ROOT/lite/gateway/common/kserver.py" "$STACK_DIR/common_kserver_tmp.py" 2>/dev/null || true
 mkdir -p "$STACK_DIR/common"
-cp "$REPO_ROOT/gateway/common/kserver.py" "$STACK_DIR/common/kserver.py"
-cp "$REPO_ROOT/gateway/common/kse.py" "$STACK_DIR/common/kse.py"
+cp "$REPO_ROOT/lite/gateway/common/kserver.py" "$STACK_DIR/common/kserver.py"
+cp "$REPO_ROOT/lite/gateway/common/kse.py" "$STACK_DIR/common/kse.py"
 rm -f "$STACK_DIR/common_kserver_tmp.py"
 
-cp "$REPO_ROOT/gateway/scan-gateway/app.py" "$STACK_DIR/scan-gateway/app.py"
-cp "$REPO_ROOT/gateway/upload-gateway/app.py" "$STACK_DIR/upload-gateway/app.py"
-cp "$REPO_ROOT/gateway/upload-gateway/templates/index.html" "$STACK_DIR/upload-gateway/templates/index.html"
-cp "$REPO_ROOT/gateway/quarantine-console/app.py" "$STACK_DIR/quarantine-console/app.py"
-cp "$REPO_ROOT/gateway/quarantine-console/templates/index.html" "$STACK_DIR/quarantine-console/templates/index.html"
-cp "$REPO_ROOT/gateway/mcp-server/server.py" "$STACK_DIR/mcp-server/server.py"
-cp "$REPO_ROOT/watchers/ollama-watcher.sh" "$STACK_DIR/ollama-watcher.sh"
+cp "$REPO_ROOT/lite/gateway/scan-gateway/app.py" "$STACK_DIR/scan-gateway/app.py"
+cp "$REPO_ROOT/lite/gateway/upload-gateway/app.py" "$STACK_DIR/upload-gateway/app.py"
+cp "$REPO_ROOT/lite/gateway/upload-gateway/templates/index.html" "$STACK_DIR/upload-gateway/templates/index.html"
+cp "$REPO_ROOT/lite/gateway/quarantine-console/app.py" "$STACK_DIR/quarantine-console/app.py"
+cp "$REPO_ROOT/lite/gateway/quarantine-console/templates/index.html" "$STACK_DIR/quarantine-console/templates/index.html"
+cp "$REPO_ROOT/lite/gateway/mcp-server/server.py" "$STACK_DIR/mcp-server/server.py"
+cp "$REPO_ROOT/lite/watchers/ollama-watcher.sh" "$STACK_DIR/ollama-watcher.sh"
 chmod +x "$STACK_DIR/ollama-watcher.sh"
 
 # ---------------------------------------------------------------------------
@@ -76,7 +76,7 @@ echo "[4/6] 生成配置文件..."
 declare -A SVC_PORT=( [scan-gateway]=8000 [upload-gateway]=8002 [quarantine-console]=8004 )
 for svc in scan-gateway upload-gateway quarantine-console; do
     if [ ! -f "$STACK_DIR/$svc/.env" ]; then
-        cp "$REPO_ROOT/.env.example" "$STACK_DIR/$svc/.env"
+        cp "$REPO_ROOT/lite/.env.example" "$STACK_DIR/$svc/.env"
         chmod 600 "$STACK_DIR/$svc/.env"
         echo "    -> 已生成 $STACK_DIR/$svc/.env"
     else
@@ -104,10 +104,10 @@ done
 # 5. systemd 服务
 # ---------------------------------------------------------------------------
 echo "[5/6] 注册 systemd 服务..."
-cp "$REPO_ROOT/gateway/systemd/scan-gateway.service" /etc/systemd/system/scan-gateway.service
-cp "$REPO_ROOT/gateway/systemd/upload-gateway.service" /etc/systemd/system/upload-gateway.service
-cp "$REPO_ROOT/gateway/systemd/quarantine-console.service" /etc/systemd/system/quarantine-console.service
-cp "$REPO_ROOT/gateway/systemd/ollama-watcher.service" /etc/systemd/system/ollama-watcher.service
+cp "$REPO_ROOT/lite/gateway/systemd/scan-gateway.service" /etc/systemd/system/scan-gateway.service
+cp "$REPO_ROOT/lite/gateway/systemd/upload-gateway.service" /etc/systemd/system/upload-gateway.service
+cp "$REPO_ROOT/lite/gateway/systemd/quarantine-console.service" /etc/systemd/system/quarantine-console.service
+cp "$REPO_ROOT/lite/gateway/systemd/ollama-watcher.service" /etc/systemd/system/ollama-watcher.service
 systemctl daemon-reload
 systemctl enable scan-gateway upload-gateway quarantine-console >/dev/null 2>&1 || true
 systemctl restart scan-gateway upload-gateway quarantine-console

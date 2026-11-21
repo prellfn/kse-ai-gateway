@@ -1,0 +1,39 @@
+# 客户已有的 OpenCode compose 接入 KAIP（不换镜像、不重建镜像）
+#
+# 1. 宿主机准备客户端（一次；平台升级客户端后容器内会自动同步，无需重复）：
+#      sudo mkdir -p /opt/kaip-client && curl -fsSL http://<KAIP 平台>:8080/dl/kaip-client.tar.gz | sudo tar -xz -C /opt/kaip-client
+# 2. 与客户的 compose 文件合并启动（服务名改成客户 compose 中 OpenCode 服务的名称）：
+#      echo <注册令牌> > kaip_enroll_token.txt && chmod 600 kaip_enroll_token.txt
+#      docker compose -f docker-compose.yml -f docker-compose.kaip.yml up -d
+#    令牌以 compose secrets 文件挂载，不进入容器环境变量 / docker inspect；注册成功后可 : > kaip_enroll_token.txt 清空。
+#    或把下面 services.opencode 中的内容直接写进客户的 compose。
+# 3. 验证：docker compose exec opencode node /root/.kaip/client/bin/kaip.js verify   # 必须看到「OpenCode ✔ 生效」
+#
+# 注意：
+# - command 必须是原镜像的 ENTRYPOINT + CMD（docker image inspect <镜像> 查看）；KAIP 入口完成接入后执行它。
+# - 容器以非 root 用户运行时，把 /root/.kaip 换成该用户 HOME 下的 .kaip，并设置 KAIP_HOME。
+# - 镜像没有 Node.js 18+ 时：宿主机解压平台私有运行时
+#     sudo mkdir -p /opt/kaip-node && curl -fsSL http://<KAIP 平台>:8080/dl/runtime/node-linux-x64.tar.gz | sudo tar -xz -C /opt/kaip-node --strip-components=1
+#   并取消下面 kaip-node 挂载与 KAIP_NODE 的注释（glibc 运行时，Alpine 镜像不适用）。
+# - 每次容器启动（含 docker restart）都会重装插件并拉起后台监控；注册信息保存在 kaip-state 卷，删除重建容器不需要重新注册。
+services:
+  opencode:
+    entrypoint: ["/opt/kaip-client/scripts/container-entrypoint.sh"]
+    command: ["opencode"]
+    environment:
+      KAIP_SERVER: ${KAIP_SERVER:-http://<KAIP 平台>:8080}
+      KAIP_HOME: /root/.kaip
+      # KAIP_NODE: /opt/kaip-node/bin/node
+    secrets:
+      - kaip_enroll_token          # 令牌以文件挂载到 /run/secrets/，不进入容器环境变量
+    volumes:
+      - /opt/kaip-client:/opt/kaip-client:ro
+      - kaip-state:/root/.kaip
+      # - /opt/kaip-node:/opt/kaip-node:ro
+
+volumes:
+  kaip-state:
+
+secrets:
+  kaip_enroll_token:
+    file: ./kaip_enroll_token.txt     # 首次注册前写入令牌；注册完成后可清空（文件需保留）

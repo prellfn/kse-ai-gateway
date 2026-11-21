@@ -1,7 +1,18 @@
+# ---- 离线安装包与构建产物 (体积大, 由构建脚本产出) ----
+dist/
+*.tar.gz
+新建文件夹/
+platform/data/
+platform/.venv/
+platform/.testdata/
+*.db
+*.db-journal
+
 # ---- 密钥与本地配置 (严禁提交) ----
 .env
 .env.*
 !.env.example
+lite/.env.example
 config/gateway.yaml
 config/*.local.yaml
 *.pem
@@ -28,7 +39,6 @@ build/
 # ---- Node ----
 node_modules/
 npm-debug.log*
-package-lock.json.bak
 
 # ---- 其他 ----
 .DS_Store

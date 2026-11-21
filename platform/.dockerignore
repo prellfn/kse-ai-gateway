@@ -1,0 +1,19 @@
+# 构建上下文只需要 server/ client/ deploy/opencode-container/ 与 wheels/py3.12
+.venv
+.git
+dist
+data
+docs
+runtime
+python
+kse
+tests
+.testdata
+**/__pycache__
+**/*.pyc
+**/node_modules
+**/*testdata
+wheels/py3.10
+wheels/py3.11
+deploy/kaip_enroll_token.txt
+**/kaip_enroll_token.txt

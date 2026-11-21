@@ -159,3 +159,48 @@ jobs:
             -H "Content-Type: application/octet-stream" \
             -d '{"url":"http://malicious.example.com/"}' | grep -q DETECT
           echo "URL 扫描端点正常"
+
+  platform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 平台 Python 语法检查
+        run: python -m compileall -q platform/server/app platform/mcp-server
+
+      - name: 平台 MCP Server 自检 (tools/list)
+        run: |
+          printf '%s\n' \
+            '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"ci","version":"1"}}}' \
+            '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+            '{"jsonrpc":"2.0","id":2,"method":"tools/list"}' \
+            | python3 platform/mcp-server/server.py 2>/dev/null > /tmp/mcp.json
+          cat /tmp/mcp.json
+          python3 -c "
+          import json
+          d=[json.loads(l) for l in open('/tmp/mcp.json') if l.strip()]
+          tools=[t['name'] for r in d if 'result' in r and 'tools' in r.get('result',{}) for t in r['result']['tools']]
+          need={'kaip_scan_file','kaip_scan_text','kaip_check_url','kaip_evaluate','kaip_policy','kaip_status','kaip_report'}
+          missing=need-set(tools)
+          assert not missing, 'missing tools: %s' % missing
+          print('MCP tools OK: %d' % len(tools))
+          "
+
+      - name: 平台客户端 JS 语法检查
+        run: |
+          for f in platform/client/bin/*.js platform/client/lib/*.js platform/client/adapters/opencode/*.js; do
+            node --check "$f"
+          done
+
+      - name: 平台 Shell 脚本检查
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck platform/deploy/*.sh platform/deploy/offline/*.sh platform/client/scripts/*.sh

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kaspersky AI Protect 平台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="login" class="login hidden">
+  <form class="login-card" id="loginForm">
+    <div class="brand-lg"><span class="logo">K</span> Kaspersky AI Protect</div>
+    <p class="muted">AI Agent 运行时防护 · AI 供应链入口扫描</p>
+    <input name="username" placeholder="用户名" value="admin" autocomplete="username">
+    <input name="password" type="password" placeholder="密码" autocomplete="current-password">
+    <button class="btn primary" type="submit">登录</button>
+    <div id="loginErr" class="err"></div>
+  </form>
+</div>
+
+<div id="app" class="hidden">
+  <aside class="side">
+    <div class="brand"><span class="logo">K</span><div><b>KAIP</b><small>Kaspersky AI Protect</small></div></div>
+    <nav id="nav">
+      <a href="#dashboard" data-p="dashboard">📊 安全概览</a>
+      <a href="#events" data-p="events">📜 事件日志</a>
+      <a href="#endpoints" data-p="endpoints">💻 终端与 Agent</a>
+      <a href="#supply" data-p="supply">📦 供应链扫描</a>
+      <a href="#quarantine" data-p="quarantine">🔒 隔离区</a>
+      <a href="#policy" data-p="policy">🛡️ 防护策略</a>
+      <a href="#deploy" data-p="deploy">🚀 接入部署</a>
+      <a href="#poc" data-p="poc">✅ PoC 自检</a>
+      <a href="#settings" data-p="settings">⚙️ 系统设置</a>
+    </nav>
+    <div class="side-foot">
+      <div id="engineBadge" class="badge">引擎 …</div>
+      <a href="#" id="logout">退出登录</a>
+    </div>
+  </aside>
+  <main id="main"></main>
+</div>
+<div id="toast"></div>
+<script src="/static/app.js"></script>
+</body>
+</html>
