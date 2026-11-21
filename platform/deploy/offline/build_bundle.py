@@ -52,6 +52,7 @@ def main():
     ap.add_argument("--no-kse", action="store_true", help="不打包 KSE 安装包")
     ap.add_argument("--platform-image", help="平台镜像包（在 Docker 主机上 docker save kaip-platform:<版本> | gzip 生成）")
     ap.add_argument("--no-lite", action="store_true", help="不打包 Lite 网关形态（仅平台形态）")
+    ap.add_argument("--reuse-assets", help="复用已有离线包中的 wheels/runtime/python/images/kse 产物（离线重建时使用）")
     args = ap.parse_args()
     stamp = time.strftime("%Y%m%d")
     name = f"kaip-offline-{VERSION}-{stamp}"
@@ -83,30 +84,53 @@ def main():
     shutil.copy2(ROOT / "deploy" / "offline" / "install-offline.sh", work / "install-offline.sh")
     shutil.copy2(ROOT / "deploy" / "offline" / "README-OFFLINE.md", work / "README-OFFLINE.md")
 
+    reuse = Path(args.reuse_assets) if args.reuse_assets else None
+    if reuse:
+        reuse = reuse if reuse.is_absolute() else (Path.cwd() / reuse)
+    reuse_ok = bool(reuse and (reuse / "wheels").is_dir())
+
     print("2/5 下载 Python 依赖（Linux x86_64）")
     for pv in PYVERS:
         d = work / "wheels" / f"py{pv}"
         d.mkdir(parents=True)
+        if reuse_ok and (reuse / "wheels" / f"py{pv}").is_dir():
+            for w in (reuse / "wheels" / f"py{pv}").glob("*.whl"):
+                shutil.copy2(w, d / w.name)
+            print(f"  py{pv}: 复用 {len(list(d.glob('*.whl')))} 个 wheel")
+            continue
         subprocess.run([sys.executable, "-m", "pip", "download", "-q", "-d", str(d), "--only-binary=:all:",
                         "--platform", "manylinux2014_x86_64", "--platform", "manylinux_2_17_x86_64", "--platform", "any",
                         "--python-version", pv, "--implementation", "cp", *DEPS, *EXTRA.get(pv, [])], check=True)
         print(f"  py{pv}: {len(list(d.glob('*.whl')))} 个 wheel")
 
     print("3/5 下载 Node.js 运行时")
-    idx = json.load(urllib.request.urlopen(f"{NODE_MIRROR}/index.json", timeout=60))
-    nv = next(x["version"] for x in idx if x["version"].startswith("v22.") and x.get("lts"))
     rt = work / "runtime"
     rt.mkdir()
-    fetch(f"{NODE_MIRROR}/{nv}/node-{nv}-win-x64.zip", rt / "node-win-x64.zip")
-    fetch(f"{NODE_MIRROR}/{nv}/node-{nv}-linux-x64.tar.gz", rt / "node-linux-x64.tar.gz")   # gzip：最小系统也自带（xz 不一定有）
-    (rt / "NODE_VERSION").write_text(nv, newline="\n")
+    if reuse_ok and (reuse / "runtime" / "node-win-x64.zip").is_file():
+        for f in (reuse / "runtime").iterdir():
+            if f.is_file():
+                shutil.copy2(f, rt / f.name)
+        nv = (rt / "NODE_VERSION").read_text(encoding="utf-8").strip()
+        print(f"  复用 Node 运行时 {nv}")
+    else:
+        idx = json.load(urllib.request.urlopen(f"{NODE_MIRROR}/index.json", timeout=60))
+        nv = next(x["version"] for x in idx if x["version"].startswith("v22.") and x.get("lts"))
+        fetch(f"{NODE_MIRROR}/{nv}/node-{nv}-win-x64.zip", rt / "node-win-x64.zip")
+        fetch(f"{NODE_MIRROR}/{nv}/node-{nv}-linux-x64.tar.gz", rt / "node-linux-x64.tar.gz")   # gzip：最小系统也自带（xz 不一定有）
+        (rt / "NODE_VERSION").write_text(nv, newline="\n")
 
     print("3b/5 下载便携 Python 3.12（python-build-standalone）")
-    rel = json.load(urllib.request.urlopen(PBS_API, timeout=60))
-    asset = next(a for a in rel["assets"] if a["name"].startswith("cpython-3.12.")
-                 and a["name"].endswith("-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"))
     (work / "python").mkdir()
-    fetch(asset["browser_download_url"], work / "python" / asset["name"])
+    if reuse_ok and (reuse / "python").is_dir() and any((reuse / "python").iterdir()):
+        for f in (reuse / "python").iterdir():
+            if f.is_file():
+                shutil.copy2(f, work / "python" / f.name)
+        print("  复用便携 Python")
+    else:
+        rel = json.load(urllib.request.urlopen(PBS_API, timeout=60))
+        asset = next(a for a in rel["assets"] if a["name"].startswith("cpython-3.12.")
+                     and a["name"].endswith("-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz"))
+        fetch(asset["browser_download_url"], work / "python" / asset["name"])
 
     if not args.no_kse:
         print("4/5 复制 KSE 安装包")
@@ -114,6 +138,12 @@ def main():
         if kse:
             (work / "kse").mkdir()
             shutil.copy2(kse[-1], work / "kse" / kse[-1].name)
+        elif reuse_ok and (reuse / "kse").is_dir():
+            (work / "kse").mkdir()
+            for f in (reuse / "kse").iterdir():
+                if f.is_file():
+                    shutil.copy2(f, work / "kse" / f.name)
+            print("  复用 KSE 安装包")
         else:
             print("  未找到 KSE 安装包，跳过")
 
@@ -122,6 +152,12 @@ def main():
         (work / "images").mkdir()
         shutil.copy2(img, work / "images" / img.name)
         print(f"  平台镜像：{img.name}（{img.stat().st_size / 1048576:.1f} MB）")
+    elif reuse_ok and (reuse / "images").is_dir():
+        (work / "images").mkdir()
+        for f in (reuse / "images").iterdir():
+            if f.is_file():
+                shutil.copy2(f, work / "images" / f.name)
+        print("  复用平台镜像")
 
     print("5/5 生成校验文件并打包")
     sums = []

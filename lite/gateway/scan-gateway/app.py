@@ -30,6 +30,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from common.kaip import KaipClient, KaipError  # noqa: E402
 from common.kse import KseClient, KseError  # noqa: E402
 from common.kserver import App, HTTPException, JSONResponse, Request, run  # noqa: E402
 
@@ -42,6 +43,17 @@ KSE_MODE: str = os.getenv("KSE_MODE", "auto")          # auto | file | memory
 KSE_TIMEOUT: int = int(os.getenv("KSE_TIMEOUT", "120"))
 KSE_VERIFY_TLS: bool = os.getenv("KSE_VERIFY_TLS", "false").lower() in ("1", "true", "yes")
 
+# 后端选择:
+#   kse  (默认) 直连卡巴斯基扫描引擎
+#   kaip 委托 KAIP 平台 —— 与中心平台共用同一套策略与审计台账
+KSE_BACKEND: str = os.getenv("KSE_BACKEND", "kse").lower()
+KAIP_URL: str = os.getenv("KAIP_URL", "http://127.0.0.1:8080")
+KAIP_ENROLL_TOKEN: str = os.getenv("KAIP_ENROLL_TOKEN", "")
+KAIP_AGENT_ID: str = os.getenv("KAIP_AGENT_ID", "")
+KAIP_AGENT_TOKEN: str = os.getenv("KAIP_AGENT_TOKEN", "")
+KAIP_AGENT_TYPE: str = os.getenv("KAIP_AGENT_TYPE", "lite-gateway")
+KAIP_STATE_DIR: str = os.getenv("KAIP_STATE_DIR", "~/.cache/kse-ai-gateway")
+
 SCAN_QUEUE: Path = Path(os.getenv("SCAN_QUEUE", "/opt/kaspersky/scanqueue"))
 QUARANTINE: Path = Path(os.getenv("QUARANTINE", "/opt/kaspersky/quarantine"))
 MAX_FILE_SIZE: int = int(os.getenv("MAX_FILE_SIZE", str(100 * 1024 * 1024)))
@@ -51,13 +63,24 @@ MAX_ARCHIVE_MEMBERS: int = int(os.getenv("MAX_ARCHIVE_MEMBERS", "5000"))
 MAX_ARCHIVE_UNPACKED: int = int(os.getenv("MAX_ARCHIVE_UNPACKED", str(500 * 1024 * 1024)))
 MAX_COMPRESSION_RATIO: int = int(os.getenv("MAX_COMPRESSION_RATIO", "100"))
 
-kse = KseClient(
-    url=KSE_URL,
-    token=KSE_TOKEN,
-    mode=KSE_MODE,
-    timeout=KSE_TIMEOUT,
-    verify_tls=KSE_VERIFY_TLS,
-)
+if KSE_BACKEND == "kaip":
+    kse = KaipClient(
+        url=KAIP_URL,
+        enroll_token=KAIP_ENROLL_TOKEN,
+        agent_id=KAIP_AGENT_ID,
+        agent_token=KAIP_AGENT_TOKEN,
+        timeout=KSE_TIMEOUT,
+        agent_type=KAIP_AGENT_TYPE,
+        state_dir=KAIP_STATE_DIR,
+    )
+else:
+    kse = KseClient(
+        url=KSE_URL,
+        token=KSE_TOKEN,
+        mode=KSE_MODE,
+        timeout=KSE_TIMEOUT,
+        verify_tls=KSE_VERIFY_TLS,
+    )
 
 scan_cache: dict[str, dict[str, Any]] = {}
 app = App(title="KSE Scan Gateway", version="1.2.0")
@@ -139,14 +162,14 @@ def scan_path(path: Path, timeout: int) -> dict[str, Any]:
     """调用 KSE 扫描一个本机文件, 统一异常."""
     try:
         return kse.scan_path(path, timeout=timeout)
-    except KseError as exc:
+    except (KseError, KaipError) as exc:
         raise HTTPException(502, f"KSE 调用失败: {exc}") from exc
 
 
 def scan_bytes(content: bytes, timeout: int) -> dict[str, Any]:
     try:
         return kse.scan_bytes(content, timeout=timeout)
-    except KseError as exc:
+    except (KseError, KaipError) as exc:
         raise HTTPException(502, f"KSE 调用失败: {exc}") from exc
 
 
@@ -158,10 +181,12 @@ def health(req: Request) -> JSONResponse:
     return JSONResponse(
         {
             "status": "ok",
-            "kse_url": KSE_URL,
-            "kse_mode": KSE_MODE,
+            "backend": KSE_BACKEND,
+            "kse_url": KAIP_URL if KSE_BACKEND == "kaip" else KSE_URL,
+            "kse_mode": "delegated" if KSE_BACKEND == "kaip" else KSE_MODE,
             "kse_mode_used": kse.last_mode_used,
-            "kse_auth": "token" if KSE_TOKEN else "none",
+            "kse_auth": ("platform" if KSE_BACKEND == "kaip"
+                         else ("token" if KSE_TOKEN else "none")),
             "scan_queue": str(SCAN_QUEUE),
             "quarantine": str(QUARANTINE),
             "allowed_dirs": [str(d) for d in allowed_dirs()],
@@ -454,7 +479,7 @@ def scan_url(req: Request) -> JSONResponse:
 
     try:
         result = kse.scan_url(url, timeout=timeout)
-    except KseError as exc:
+    except (KseError, KaipError) as exc:
         audit("scan_url_error", request_id=request_id, url=url, error=str(exc))
         raise HTTPException(502, str(exc)) from exc
 

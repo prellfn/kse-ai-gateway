@@ -103,6 +103,7 @@ graph TB
 
     PLATFORM --> KSE
     LITE --> KSE
+    LITE -. 委托判定 (KSE_BACKEND=kaip) .-> API
 
     style PLATFORM fill:#e8f5e9,stroke:#2e7d32
     style LITE fill:#e3f2fd,stroke:#1976d2
@@ -185,6 +186,27 @@ kse-ai-gateway/
 - 企业内网、终端 ≥ 3 台、需要统一策略与审计 → **平台形态**（终端用 KAIP client，或用 `platform/mcp-server` 接 MCP 客户端）
 - 单台网关、只想加一道扫描、或环境受限 → **Lite 网关形态**
 - 两者可并存：平台做管控中心，边缘节点用 Lite 网关就近扫描
+
+### 混合部署：边缘 Lite + 中心 KAIP 平台
+
+Lite 网关支持**委托模式**（`KSE_BACKEND=kaip`）：边缘节点把扫描委托给中心平台判定，
+**策略、事件、审计台账与中心平台完全统一**，边缘只保留就近拦截能力。
+
+```bash
+# 边缘 Lite 网关
+KSE_BACKEND=kaip
+KAIP_URL=http://kaip-center:8080
+KAIP_ENROLL_TOKEN=<平台注册令牌>
+```
+
+| 平台 verdict / action | Lite 判定 | 行为 |
+| --- | --- | --- |
+| `CLEAN` / `allow` | CLEAN | 放行 |
+| `DETECT` / `block` | DETECT | 拦截 + 本地隔离 |
+| `RISK` / `alert` | CLEAN | 放行（平台决定只告警），事件已入平台台账 |
+| `NON_SCANNED` / `ERROR` | SCAN_ERROR | **Fail-Closed**，不放行 |
+
+首次扫描自动向平台注册终端，凭据缓存在 `~/.cache/kse-ai-gateway/agent.json`。
 
 ---
 
@@ -324,6 +346,7 @@ python3 lite/scripts/mock_scan_gateway.py --port 18000            # 模拟网关
 | [`docs/field-notes.md`](docs/field-notes.md) | 真实环境落地记录 |
 | [`docs/install.md`](docs/install.md) | Lite 网关部署 |
 | [`integrations/README.md`](integrations/README.md) | Lite 形态 Agent 接入 |
+| [`lite/README.md`](lite/README.md) | Lite 网关形态说明（两种后端 / 判定映射） |
 | [`docs/api.md`](docs/api.md) | Lite 网关 API 参考 |
 | [`docs/architecture.md`](docs/architecture.md) | 架构拓扑与数据流 |
 
@@ -339,6 +362,8 @@ python3 lite/scripts/mock_scan_gateway.py --port 18000            # 模拟网关
 - [x] **MCP Server**：原生 MCP 客户端复用平台策略（本仓库新增，填补平台空缺）
 - [x] Lite 网关形态：零依赖重构 + 隔离区复核台 + 分层验证
 - [x] 分离部署：路径扫描被拒时自动回退内存扫描（平台与 Lite 双侧）
+- [x] Lite 网关**委托 KAIP 平台**模式（边缘 + 中心，统一策略与审计）
+- [x] 离线包同时包含平台形态 + Lite 形态 + MCP Server + 统一文档（`--reuse-assets` 支持离线重建）
 - [ ] 平台形态：MCP 客户端的自动注册与令牌轮换
 - [ ] 双向 TLS（mTLS）与多租户
 - [ ] 复核台接入统一登录（OIDC / LDAP）

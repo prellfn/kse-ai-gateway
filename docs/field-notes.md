@@ -322,3 +322,96 @@ LISTEN_PORT=8000
 
 > 注意 `192.168.1.121` 上没有 Docker，因此 AnythingLLM 未部署，
 > Upload Gateway 设为 `FORWARD_ENABLED=false`（只验证扫描链路，不转发入库）。
+
+---
+
+## 9. 整合后的统一部署形态（2026-11-21 实测）
+
+### 9.1 真实拓扑
+
+```
+192.168.1.122 (kuma3)                     192.168.1.121 (kuma2)
+├── KSE 2.2           :1234 (HTTP)        ├── Lite 网关形态
+├── KAIP 平台          :8080              │    Scan Gateway    :8000
+│   ├── agent API / 策略引擎 / SQLite     │    Upload Gateway  :8002
+│   ├── Web 控制台                        │    隔离区复核台     :8004
+│   └── MCP Server    (stdio)             │    └── 可委托给 :8080
+└── 已注册终端 5 个 (含 2 个 OpenCode)
+```
+
+### 9.2 边缘委托模式（新增，实测通过）
+
+`.121` 的 Lite 网关可把扫描**委托给 `.122` 的 KAIP 平台**判定：
+
+```bash
+KSE_BACKEND=kaip
+KAIP_URL=http://192.168.1.122:8080
+KAIP_ENROLL_TOKEN=<平台注册令牌>
+KAIP_STATE_DIR=/opt/ai-stack/scan-gateway/state
+```
+
+实测结果：
+
+```
+干净文件   -> verdict=CLEAN   scan_mode=kaip
+EICAR 文件 -> verdict=DETECT  detection_name=EICAR-Test-File  quarantined=true
+```
+
+平台侧同步留下审计记录（`agent_type=lite-gateway`，host=`kuma2.prell.cn`），
+平台与边缘网关**共用同一份事件台账**。
+
+### 9.3 判定映射（尊重平台决策）
+
+| 平台 verdict / action | Lite 判定 | 行为 |
+| --- | --- | --- |
+| `CLEAN` / `allow` | CLEAN | 放行 |
+| `DETECT` / `block` | DETECT | 拦截 + 本地隔离 |
+| `RISK` / `alert` | CLEAN | 放行（平台决定只告警），事件已入平台台账 |
+| `NON_SCANNED` / `ERROR` | SCAN_ERROR | Fail-Closed，不放行 |
+
+实现见 `lite/gateway/common/kaip.py`，切换开关 `KSE_BACKEND=kse|kaip`。
+
+### 9.4 离线包重建
+
+`platform/deploy/offline/build_bundle.py` 新增 `--reuse-assets`，可在**无外网**的机器上
+用旧包里的 wheels / Node 运行时 / 便携 Python / 镜像 / KSE 安装包重建新包：
+
+```bash
+python3 platform/deploy/offline/build_bundle.py \
+    --reuse-assets /path/to/kaip-offline-1.0.0-20261120
+```
+
+产出 `kaip-offline-1.0.0-20261121.tar.gz`（220.5 MB / 169 文件），内含：
+
+| 内容 | 文件数 |
+| --- | --- |
+| 平台形态 `server/ client/ deploy/ tests/ mcp-server/` | 83 |
+| Lite 网关形态 `lite/` | 37 |
+| 文档 `docs/`（含 `docs/unified/`） | 11 |
+| wheels / runtime / python / images / kse | 128 |
+
+### 9.5 平台侧补强：scanfile 被拒自动回退
+
+KAIP 原本在「平台与 KSE 分离且未配 NFS 共享」时，`scanfile` 被 KSE 拒绝远程路径扫描
+会直接返回 ERROR —— **大文件会漏扫**。已在 `platform/server/app/kse.py` 补上自动回退：
+
+```
+scanfile 被拒 -> 自动回退 scanmemory -> 判定能力等价
+```
+
+单元验证（模拟 KSE 拒绝远程路径）：
+
+```
+fb_clean.txt   verdict=CLEAN   detection=-
+fb_bad.txt     verdict=DETECT  detection=EICAR-Test-File
+```
+
+补丁已部署到 `.122` 线上平台（备份 `kse.py.bak-` 保留），服务 `active`、`healthz: ok`。
+
+### 9.6 顺带观察到的平台运行数据
+
+- 平台已注册 5 个终端：`lite-gateway`(121)、`kaip-mcp/1.0.0`(codex)、2 个 opencode、1 个 codex
+- 平台收到了来自 `192.168.1.14` 的 **KSE ICAP syslog** 事件 —— 说明还有第三台机器在通过
+  KSE ICAP 接入扫描链路
+- KSE 病毒库版本 `21.11.2026 07:02 GMT`，KAVSDK `8.10.3.677`
+- ⚠️ **KSE 许可证 2026-12-23 到期**，需尽快续期
