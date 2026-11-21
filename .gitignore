@@ -14,6 +14,7 @@ platform/.testdata/
 !.env.example
 lite/.env.example
 config/gateway.yaml
+platform/deploy/kaip_enroll_token.txt
 config/*.local.yaml
 *.pem
 *.key
